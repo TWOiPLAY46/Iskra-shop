@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { CatalogMegaMenu } from './CatalogMegaMenu';
+import { PWAInstallButton } from './PWAInstallButton';
 import { 
   ShoppingBag, 
   Heart, 
@@ -199,6 +200,9 @@ export const Header: React.FC = () => {
             {/* Right Action Icons Group */}
             <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
               
+              {/* PWA App Install Button (if not already installed) */}
+              <PWAInstallButton variant="header" className="hidden lg:flex" />
+
               {/* Account Profile Button */}
               <button
                 onClick={() => setActiveView(activeView === 'account' ? 'store' : 'account')}
@@ -420,6 +424,10 @@ export const Header: React.FC = () => {
                 <Lock className="w-3.5 h-3.5 text-slate-500" />
                 <span>Адмін-панель</span>
               </button>
+            </div>
+
+            <div className="pt-1">
+              <PWAInstallButton variant="button" className="w-full justify-center" />
             </div>
           </div>
         )}
