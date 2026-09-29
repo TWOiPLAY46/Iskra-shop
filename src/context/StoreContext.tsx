@@ -885,10 +885,56 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       next = [product, ...products];
     }
     setProducts(next);
+
+    // Auto-register category hierarchy into categoriesTree if new
+    let updatedTree = { ...categoriesTree };
+    let treeChanged = false;
+    const main = product.mainCategory?.trim();
+    const sub = product.subCategory?.trim();
+    const leaf = product.category?.trim();
+
+    if (main) {
+      if (!updatedTree[main]) {
+        updatedTree[main] = { _leaves: [] };
+        treeChanged = true;
+      }
+      if (sub) {
+        if (!updatedTree[main][sub] || !Array.isArray(updatedTree[main][sub])) {
+          updatedTree[main] = { ...updatedTree[main], [sub]: [] };
+          treeChanged = true;
+        }
+        if (leaf && !updatedTree[main][sub].includes(leaf)) {
+          updatedTree[main] = {
+            ...updatedTree[main],
+            [sub]: [...updatedTree[main][sub], leaf]
+          };
+          treeChanged = true;
+        }
+      } else if (leaf) {
+        const currentLeaves = updatedTree[main]._leaves ? [...updatedTree[main]._leaves] : [];
+        if (!currentLeaves.includes(leaf)) {
+          updatedTree[main] = {
+            ...updatedTree[main],
+            _leaves: [...currentLeaves, leaf]
+          };
+          treeChanged = true;
+        }
+      }
+    }
+
+    if (treeChanged) {
+      setCategoriesTree(updatedTree);
+      localStorage.setItem('iskra_categories_tree_react', JSON.stringify(updatedTree));
+    }
+
     showToast(`Товар "${product.name}" збережено!`, 'success');
     if (firebaseConfig.enabled) {
       saveProductDirectlyToDatabase(firebaseConfig, product);
-      pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+      pushStoreToFirebase(firebaseConfig, { 
+        products: next, 
+        categoriesTree: treeChanged ? updatedTree : categoriesTree,
+        lastSyncTimestamp: Date.now() 
+      });
     }
   };
 
