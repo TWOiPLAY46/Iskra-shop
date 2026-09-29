@@ -263,26 +263,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [orders, setOrders] = useState<Order[]>(() => {
     const saved = localStorage.getItem('iskra_orders_react');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try { 
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(o => o.id !== 'ORD-948120' && o.phone !== '+380971234567');
+        }
+      } catch (e) { console.error(e); }
     }
-    return [
-      {
-        id: "ORD-948120",
-        fio: "Олександр Коваленко",
-        phone: "+380971234567",
-        delivery: "Нова Пошта (м. Вінниця, Відділення №4)",
-        city: "Вінниця",
-        items: [
-          { name: "Змішувач для умивальника одноважільний латунь", qty: 1, price: 850, unit: "грн/шт", sku: "MIX-01-BR" },
-          { name: "Кабель силовий мідний ВВГ-п 3х1.5 негорючий (НГ)", qty: 50, price: 28.5, unit: "грн/м", sku: "CAB-315-NG" }
-        ],
-        total: 2275,
-        date: "28.09.2026, 14:32",
-        status: "Відправлено",
-        ttn: "20450892019482",
-        paymentMethod: "cash_on_delivery"
-      }
-    ];
+    return [];
   });
 
   // Clients
@@ -290,12 +278,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const saved = localStorage.getItem('iskra_clients_react');
     if (saved) {
       try { 
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          const clean: Record<string, ClientData> = {};
+          for (const [phone, data] of Object.entries(parsed)) {
+            if (phone !== '+380971234567' && phone !== '0971234567') {
+              clean[phone] = data as ClientData;
+            }
+          }
+          return clean;
+        }
       } catch (e) { console.error(e); }
     }
-    return {
-      "+380971234567": { name: "Олександр", balance: 150, discount: 5 }
-    };
+    return {};
   });
 
   // Customer Reviews (Synced to Firebase RTDB + Firestore)
@@ -486,8 +481,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setDbStatus('connected');
           if (cloudData.products && Array.isArray(cloudData.products)) setProducts(cloudData.products);
           if (cloudData.categoriesTree) setCategoriesTree(normalizeCategoriesTree(cloudData.categoriesTree));
-          if (cloudData.orders && Array.isArray(cloudData.orders)) setOrders(cloudData.orders);
-          if (cloudData.clients && typeof cloudData.clients === 'object') setClients(cloudData.clients);
+          if (cloudData.orders && Array.isArray(cloudData.orders)) {
+            setOrders(cloudData.orders.filter((o: Order) => o.id !== 'ORD-948120' && o.phone !== '+380971234567'));
+          }
+          if (cloudData.clients && typeof cloudData.clients === 'object') {
+            const clean: Record<string, ClientData> = {};
+            for (const [phone, data] of Object.entries(cloudData.clients)) {
+              if (phone !== '+380971234567' && phone !== '0971234567') {
+                clean[phone] = data as ClientData;
+              }
+            }
+            setClients(clean);
+          }
           if (cloudData.reviews && Array.isArray(cloudData.reviews)) setReviews(cloudData.reviews);
           if (cloudData.siteSettings) setSiteSettings((prev) => ({ ...prev, ...cloudData.siteSettings }));
           if (cloudData.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...cloudData.headerDesign }));
@@ -519,8 +524,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setDbStatus('connected');
         if (data.products && Array.isArray(data.products)) setProducts(data.products);
         if (data.categoriesTree && typeof data.categoriesTree === 'object') setCategoriesTree(normalizeCategoriesTree(data.categoriesTree));
-        if (data.orders && Array.isArray(data.orders)) setOrders(data.orders);
-        if (data.clients && typeof data.clients === 'object') setClients(data.clients);
+        if (data.orders && Array.isArray(data.orders)) {
+          setOrders(data.orders.filter((o: Order) => o.id !== 'ORD-948120' && o.phone !== '+380971234567'));
+        }
+        if (data.clients && typeof data.clients === 'object') {
+          const clean: Record<string, ClientData> = {};
+          for (const [phone, d] of Object.entries(data.clients)) {
+            if (phone !== '+380971234567' && phone !== '0971234567') {
+              clean[phone] = d as ClientData;
+            }
+          }
+          setClients(clean);
+        }
         if (data.reviews && Array.isArray(data.reviews)) setReviews(data.reviews);
         if (data.siteSettings) setSiteSettings((prev) => ({ ...prev, ...data.siteSettings }));
         if (data.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...data.headerDesign }));
