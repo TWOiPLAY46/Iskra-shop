@@ -38,7 +38,7 @@ import { Order, OrderStatus } from '../types/store';
 const ORDER_STEPS: { status: OrderStatus; label: string; desc: string }[] = [
   { status: 'Створено', label: 'Оформлено', desc: 'Замовлення прийнято в систему' },
   { status: 'Оплачено', label: 'Оплачено', desc: 'Кошти або спосіб оплати підтверджено' },
-  { status: 'Збирається', label: 'Комплектується', desc: 'Збирається на складі в м. Шепетівка' },
+  { status: 'Збирається', label: 'Комплектується', desc: 'Комплектується на складі магазину' },
   { status: 'Відправлено', label: 'В дорозі', desc: 'Передано перевізнику Нова Пошта' },
   { status: 'Доставлено', label: 'Доставлено', desc: 'Готово до отримання або видано' }
 ];
@@ -231,7 +231,7 @@ export const AccountView: React.FC = () => {
         <body>
           <div class="header">
             <h2>Магазин електромонтажу та сантехніки «ІСКРА»</h2>
-            <div>м. Шепетівка, Хмельницька обл. · Тел: ${siteSettings.phone}</div>
+            <div>${siteSettings.city || 'с. Оратів'}, ${siteSettings.address || 'Вінницька обл.'} · Тел: ${siteSettings.phone}</div>
           </div>
           <div class="meta">
             <div><b>Замовлення №:</b> ${order.id}</div>
@@ -302,7 +302,7 @@ export const AccountView: React.FC = () => {
           <div className="flex items-center gap-2 text-xs">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-slate-500 hidden sm:inline">Служба доставки ISKRA</span>
-            <span className="font-bold text-slate-800">м. Шепетівка</span>
+            <span className="font-bold text-slate-800">{siteSettings.city || 'с. Оратів'}</span>
           </div>
 
         </div>
