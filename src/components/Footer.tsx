@@ -1,7 +1,6 @@
 import React from 'react';
 import { useStore } from '../context/StoreContext';
 import { Phone, MapPin, Clock, ShieldCheck, Truck, Lock } from 'lucide-react';
-import { PWAInstallButton } from './PWAInstallButton';
 
 export const Footer: React.FC = () => {
   const { siteSettings, setActiveView } = useStore();
@@ -87,20 +86,17 @@ export const Footer: React.FC = () => {
         <div className="mt-12 pt-6 border-t border-slate-900 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
           <p>© {new Date().getFullYear()} Магазин «ISKRA». Всі права захищені.</p>
 
-          <div className="flex items-center gap-4">
-            <PWAInstallButton variant="button" className="!py-1 !px-2.5 !text-[11px] !bg-slate-800 hover:!bg-slate-700 !text-slate-200" />
-            <button
-              onClick={() => {
-                setActiveView('admin');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="flex items-center gap-1.5 text-slate-600 hover:text-slate-400 transition-colors"
-              title="Вхід для персоналу"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Панель керування</span>
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              setActiveView('admin');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="flex items-center gap-1.5 text-slate-600 hover:text-slate-400 transition-colors"
+            title="Вхід для персоналу"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Панель керування</span>
+          </button>
         </div>
       </div>
     </footer>
