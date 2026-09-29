@@ -294,8 +294,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch (e) { console.error(e); }
     }
     return {
-      "+380971234567": { name: "Олександр", balance: 150, discount: 5 },
-      "09753438988": { name: "Дмитро", balance: 250, discount: 3 }
+      "+380971234567": { name: "Олександр", balance: 150, discount: 5 }
     };
   });
 
@@ -313,14 +312,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return initialReviews;
   });
 
-  // Client auth (check URL query ?client=09753438988 first)
+  // Client auth (check URL query ?client=... or localStorage)
   const [currentClientPhone, setCurrentClientPhone] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const urlClient = urlParams.get('client');
-      if (urlClient) return urlClient;
+      if (urlClient) {
+        localStorage.setItem('iskra_current_client_phone', urlClient);
+        return urlClient;
+      }
+      return localStorage.getItem('iskra_current_client_phone') || null;
     }
-    return localStorage.getItem('iskra_current_client_phone') || "09753438988";
+    return null;
   });
 
   // Site Settings
@@ -1129,8 +1132,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const logoutClient = () => {
     localStorage.removeItem('iskra_current_client_phone');
+    if (typeof window !== 'undefined') {
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('client')) {
+          url.searchParams.delete('client');
+          window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+        }
+      } catch {
+        // ignore url errors
+      }
+    }
     setCurrentClientPhone(null);
-    showToast('Ви вийшли з кабінету', 'info');
+    showToast('Ви успішно вийшли з особистого кабінету', 'info');
   };
 
   const saveClient = (phone: string, data: ClientData) => {
