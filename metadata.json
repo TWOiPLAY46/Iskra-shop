@@ -1,0 +1,6 @@
+{
+  "name": "ISKRA — Сантехніка та Електротовари",
+  "description": "Професійний інтернет-магазин сантехніки, опалення та електротоварів. Швидка доставка, гарантія якості, вигідні ціни.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

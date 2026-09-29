@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    overflow-x: clip;
+    max-width: 100%;
+    width: 100%;
+  }
+
+  #root {
+    overflow-x: clip;
+    max-width: 100%;
+    width: 100%;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  
+  h1, h2, h3, .font-display {
+    font-family: 'Cabinet Grotesk', 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+}
+
+/* Custom scrollbar for modern industrial feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@keyframes bounceCart {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.22); }
+}
+
+.cart-bounce {
+  animation: bounceCart 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Pulsing Buy Button Keyframes & Classes - Subtle & Gentle */
+@keyframes pulseGlowRed {
+  0%, 100% {
+    box-shadow: 0 2px 6px -1px rgba(220, 38, 38, 0.35);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 3px 10px 1px rgba(220, 38, 38, 0.45);
+    transform: scale(1.015);
+  }
+}
+
+.btn-pulse-red {
+  animation: pulseGlowRed 2.4s ease-in-out infinite;
+}
+
+/* Green Pulsing Radar Waves for Floating Consultation Button */
+@keyframes pulseRingGreen {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes pulseButtonGreen {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 10px 25px -3px rgba(16, 185, 129, 0.45), 0 4px 6px -2px rgba(16, 185, 129, 0.2);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 16px 35px -2px rgba(16, 185, 129, 0.65), 0 6px 12px -2px rgba(16, 185, 129, 0.35);
+  }
+}
+
+@keyframes phoneWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(-20deg) scale(1.08); }
+  20% { transform: rotate(18deg) scale(1.08); }
+  30% { transform: rotate(-14deg); }
+  40% { transform: rotate(14deg); }
+  50% { transform: rotate(-6deg); }
+  60% { transform: rotate(6deg); }
+  70%, 90% { transform: rotate(0deg); }
+}
+
+.consultation-pulse-ring-1 {
+  animation: pulseRingGreen 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+.consultation-pulse-ring-2 {
+  animation: pulseRingGreen 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  animation-delay: 0.8s;
+}
+
+.consultation-pulse-ring-3 {
+  animation: pulseRingGreen 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  animation-delay: 1.6s;
+}
+
+.consultation-btn-pulse {
+  animation: pulseButtonGreen 2.4s ease-in-out infinite;
+}
+
+.consultation-phone-wiggle {
+  animation: phoneWiggle 3.2s ease-in-out infinite;
+}
+

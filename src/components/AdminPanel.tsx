@@ -1,0 +1,4068 @@
+import React, { useState, useEffect } from 'react';
+import { useStore } from '../context/StoreContext';
+import { saveAdminPasswordToFirestore } from '../services/firebaseService';
+import { getSafeImageUrl } from '../utils/assetImages';
+import { optimizeImageFile } from '../utils/imageUpload';
+import { 
+  formatUkrainianPhone, 
+  extractLocalPhoneDigits, 
+  UKRAINIAN_OPERATOR_CODES 
+} from '../utils/phoneFormatter';
+import { 
+  Package, 
+  ShoppingCart, 
+  Users, 
+  Palette, 
+  Settings, 
+  LogOut, 
+  Plus, 
+  Search, 
+  Trash2, 
+  Edit3, 
+  FileDown, 
+  FileUp, 
+  FolderPlus, 
+  Lock, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Send, 
+  ArrowLeft,
+  DollarSign,
+  Database,
+  RefreshCw,
+  CloudUpload,
+  CloudDownload,
+  Sliders,
+  TrendingUp,
+  Printer,
+  Sparkles,
+  Key,
+  ShieldAlert,
+  Flame,
+  Clock,
+  Tag,
+  Percent,
+  ShoppingBag,
+  ExternalLink,
+  Mail,
+  Eye,
+  EyeOff,
+  UserCheck,
+  Shield,
+  ShieldCheck,
+  UserPlus,
+  Pencil,
+  MapPin,
+  Star,
+  ThumbsUp,
+  MessageSquare,
+  MessageSquarePlus,
+  Upload,
+  Image as ImageIcon,
+  X
+} from 'lucide-react';
+import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
+import { 
+  checkAdminSecurityStatus, 
+  recordFailedLogin, 
+  recordSuccessfulLogin, 
+  getSecurityLogs, 
+  clearSecurityAuditLogs,
+  generateAntiBotChallenge
+} from '../services/adminSecurityService';
+
+// Helper component for managing each main category in the tree
+const AdminCategoryCard: React.FC<{
+  mainCat: string;
+  mainObj: Record<string, any>;
+  onDeleteMain: (name: string) => void;
+  onAddSub: (main: string, sub: string) => void;
+  onDeleteSub: (main: string, sub: string) => void;
+  onAddLeaf: (main: string, sub: string | null, leaf: string) => void;
+  onDeleteLeaf: (main: string, sub: string | null, leaf: string) => void;
+}> = ({
+  mainCat,
+  mainObj,
+  onDeleteMain,
+  onAddSub,
+  onDeleteSub,
+  onAddLeaf,
+  onDeleteLeaf
+}) => {
+  const [subInput, setSubInput] = useState('');
+  const [directLeafInput, setDirectLeafInput] = useState('');
+  const [leafInputs, setLeafInputs] = useState<Record<string, string>>({});
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [confirmSubDelete, setConfirmSubDelete] = useState<string | null>(null);
+
+  const directLeaves: string[] = Array.isArray(mainObj._leaves) ? mainObj._leaves : [];
+  const subCats = Object.keys(mainObj).filter((k) => k !== '_leaves' && !k.startsWith('_'));
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-2">
+          <span className="p-1 rounded-lg bg-orange-100 text-orange-600 text-xs">📂</span>
+          <span>{mainCat}</span>
+          <span className="text-[11px] font-normal text-slate-500">
+            ({subCats.length} підкатегорій, {directLeaves.length} прямих груп)
+          </span>
+        </span>
+
+        {isConfirmingDelete ? (
+          <div className="flex items-center gap-1.5 animate-in fade-in">
+            <span className="text-xs text-rose-600 font-semibold">Видалити всю категорію?</span>
+            <button
+              type="button"
+              onClick={() => {
+                onDeleteMain(mainCat);
+                setIsConfirmingDelete(false);
+              }}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-xs"
+            >
+              Так, видалити
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsConfirmingDelete(false)}
+              className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-medium"
+            >
+              Скасувати
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsConfirmingDelete(true)}
+            className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline"
+          >
+            Видалити категорію
+          </button>
+        )}
+      </div>
+
+      {/* Input forms for Subcategory and Direct Leaf */}
+      <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-slate-200/80">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (subInput.trim()) {
+              onAddSub(mainCat, subInput.trim());
+              setSubInput('');
+            }
+          }}
+          className="flex items-center gap-1.5"
+        >
+          <input
+            type="text"
+            placeholder={`Нова підкатегорія в "${mainCat}"...`}
+            value={subInput}
+            onChange={(e) => setSubInput(e.target.value)}
+            className="px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white outline-none focus:border-orange-500 w-48 sm:w-56"
+          />
+          <button
+            type="submit"
+            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-2xs"
+          >
+            + Підкатегорія
+          </button>
+        </form>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (directLeafInput.trim()) {
+              onAddLeaf(mainCat, null, directLeafInput.trim());
+              setDirectLeafInput('');
+            }
+          }}
+          className="flex items-center gap-1.5 sm:ml-auto"
+        >
+          <input
+            type="text"
+            placeholder="Пряма кінцева група..."
+            value={directLeafInput}
+            onChange={(e) => setDirectLeafInput(e.target.value)}
+            className="px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white outline-none focus:border-orange-500 w-40 sm:w-48"
+          />
+          <button
+            type="submit"
+            className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-2xs"
+          >
+            + Кінцева
+          </button>
+        </form>
+      </div>
+
+      {/* Direct Leaves (if any) */}
+      {directLeaves.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          <span className="text-[11px] text-slate-400 font-semibold self-center mr-1">Прямі групи:</span>
+          {directLeaves.map((leaf) => (
+            <span
+              key={leaf}
+              className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-900 border border-amber-200/80 text-xs px-2.5 py-1 rounded-lg"
+            >
+              <span>{leaf}</span>
+              <button
+                type="button"
+                onClick={() => onDeleteLeaf(mainCat, null, leaf)}
+                className="text-amber-700 hover:text-rose-600 font-bold ml-0.5"
+                title="Видалити"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Subcategories Grid */}
+      {subCats.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+          {subCats.map((sub) => {
+            const leaves: string[] = Array.isArray(mainObj[sub]) ? mainObj[sub] : [];
+
+            return (
+              <div key={sub} className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs shadow-2xs space-y-2">
+                <div className="flex items-center justify-between font-bold text-slate-800 pb-1.5 border-b border-slate-100">
+                  <span className="flex items-center gap-1.5">
+                    <span>📁</span>
+                    <span>{sub}</span>
+                  </span>
+
+                  {confirmSubDelete === sub ? (
+                    <span className="inline-flex items-center gap-1 animate-in fade-in">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onDeleteSub(mainCat, sub);
+                          setConfirmSubDelete(null);
+                        }}
+                        className="px-1.5 py-0.5 bg-rose-600 text-white rounded text-[10px] font-bold"
+                      >
+                        Видалити
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmSubDelete(null)}
+                        className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px]"
+                      >
+                        Ні
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmSubDelete(sub)}
+                      className="text-rose-500 hover:text-rose-700 font-normal text-[11px] hover:underline"
+                    >
+                      Видалити
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1 min-h-[24px]">
+                  {leaves.length === 0 ? (
+                    <span className="text-[11px] text-slate-400 italic">Немає кінцевих категорій</span>
+                  ) : (
+                    leaves.map((leaf) => (
+                      <span
+                        key={leaf}
+                        className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md text-[11px] transition-colors"
+                      >
+                        <span>{leaf}</span>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteLeaf(mainCat, sub, leaf)}
+                          className="text-slate-400 hover:text-rose-600 font-bold ml-0.5"
+                          title="Видалити"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const val = (leafInputs[sub] || '').trim();
+                    if (val) {
+                      onAddLeaf(mainCat, sub, val);
+                      setLeafInputs((prev) => ({ ...prev, [sub]: '' }));
+                    }
+                  }}
+                  className="flex items-center gap-1.5 pt-1.5 border-t border-slate-100"
+                >
+                  <input
+                    type="text"
+                    placeholder="+ Кінцева група"
+                    value={leafInputs[sub] || ''}
+                    onChange={(e) => setLeafInputs((prev) => ({ ...prev, [sub]: e.target.value }))}
+                    className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg flex-1 outline-none focus:border-orange-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold"
+                  >
+                    +
+                  </button>
+                </form>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const AdminPanel: React.FC = () => {
+  const { 
+    products, 
+    categoriesTree, 
+    orders, 
+    clients, 
+    siteSettings, 
+    headerDesign,
+    isAdminLoggedIn,
+    adminUserEmail,
+    adminLogin,
+    adminRegister,
+    adminLogout,
+    saveProduct,
+    deleteProduct,
+    updateProductStock,
+    updateProductPrice,
+    bulkAdjustPrices,
+    bulkAdjustStock,
+    exportProductsCSV,
+    importProductsCSV,
+    resetDefaultCatalog,
+    updateOrderStatus,
+    updateOrderTtn,
+    editOrder,
+    deleteOrder,
+    clearAllOrders,
+    addMainCategory,
+    deleteMainCategory,
+    addSubCategory,
+    deleteSubCategory,
+    addLeafCategory,
+    deleteLeafCategory,
+    saveClient,
+    deleteClient,
+    reviews,
+    addReview,
+    updateReview,
+    deleteReview,
+    resetDefaultReviews,
+    updateSiteSettings,
+    updateSiteFeatures,
+    updateHeaderDesign,
+    weeklyDeal,
+    updateWeeklyDeal,
+    firebaseConfig,
+    updateFirebaseConfig,
+    dbStatus,
+    testDbConnection,
+    syncToCloud,
+    fetchFromCloud,
+    exportJsonBackup,
+    importJsonBackup,
+    setActiveView,
+    showToast
+  } = useStore();
+
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [activeTab, setActiveTab] = useState<
+    'products' | 'weekly_deal' | 'categories' | 'orders' | 'reviews' | 'clients' | 'analytics' | 'features' | 'database' | 'design' | 'settings'
+  >('products');
+
+  // Search & Filter states
+  const [productSearch, setProductSearch] = useState('');
+  const [productFilterStock, setProductFilterStock] = useState<'all' | 'in_stock' | 'out_of_stock'>('all');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderFilterStatus, setOrderFilterStatus] = useState<string>('all');
+  const [clientSearch, setClientSearch] = useState('');
+
+  // Reviews Tab State
+  const [reviewSearch, setReviewSearch] = useState('');
+  const [reviewFilterRating, setReviewFilterRating] = useState<string>('all');
+  const [reviewFilterProduct, setReviewFilterProduct] = useState<string>('all');
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [rAuthor, setRAuthor] = useState('');
+  const [rCity, setRCity] = useState('');
+  const [rRating, setRRating] = useState<number>(5);
+  const [rProductId, setRProductId] = useState('');
+  const [rComment, setRComment] = useState('');
+  const [rVerified, setRVerified] = useState(true);
+  const [rRecommended, setRRecommended] = useState(true);
+  const [rHelpful, setRHelpful] = useState<number>(0);
+  const [rDate, setRDate] = useState('Сьогодні');
+
+  // Bulk price edit state
+  const [bulkPercent, setBulkPercent] = useState<number>(5);
+
+  // Product Add/Edit Modal
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+
+  // Form states for Product Modal
+  const [pName, setPName] = useState('');
+  const [pMainCat, setPMainCat] = useState('');
+  const [pSubCat, setPSubCat] = useState('');
+  const [pLeafCat, setPLeafCat] = useState('');
+  const [pBadge, setPBadge] = useState<ProductBadge>('');
+  const [pSku, setPSku] = useState('');
+  const [pStock, setPStock] = useState(10);
+  const [pPrice, setPPrice] = useState(100);
+  const [pUnit, setPUnit] = useState('грн/шт');
+  const [pDesc, setPDesc] = useState('');
+  const [pImage, setPImage] = useState('');
+  const [isUploadingProductImage, setIsUploadingProductImage] = useState(false);
+  const [productImageUploadError, setProductImageUploadError] = useState<string | null>(null);
+  const [productImageTab, setProductImageTab] = useState<'upload' | 'url'>('upload');
+
+  // Handler for uploading product image from local PC
+  const handleProductImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setProductImageUploadError(null);
+    setIsUploadingProductImage(true);
+    try {
+      const result = await optimizeImageFile(file, 1000, 1000, 0.85);
+      setPImage(result.dataUrl);
+      showToast(`Фото товару успішно завантажено (${result.sizeKb} КБ)!`, 'success');
+    } catch (err: any) {
+      const msg = err.message || 'Помилка під час обробки фото';
+      setProductImageUploadError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setIsUploadingProductImage(false);
+      e.target.value = '';
+    }
+  };
+
+  // Category states
+  const [newMainCatInput, setNewMainCatInput] = useState('');
+
+  // Order management states
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
+  const [confirmClearAllOrders, setConfirmClearAllOrders] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [addOrderItemId, setAddOrderItemId] = useState<string>('');
+
+  // Client edit/add modal state
+  const [clientModalOpen, setClientModalOpen] = useState(false);
+  const [clientForm, setClientForm] = useState<{
+    phone: string;
+    originalPhone?: string;
+    name: string;
+    balance: number;
+    discount: number;
+    city?: string;
+    notes?: string;
+    isNew?: boolean;
+  }>({
+    phone: '',
+    name: '',
+    balance: 0,
+    discount: 3,
+    city: '',
+    notes: '',
+    isNew: false
+  });
+  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
+
+  // Settings & DB Form
+  const [settingsForm, setSettingsForm] = useState(siteSettings);
+  const [designForm, setDesignForm] = useState(headerDesign);
+  const [dbConfigForm, setDbConfigForm] = useState<FirebaseConnectionConfig>(firebaseConfig);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+  // Security Session Guard:
+  // On all admin panel pages, if sessionStorage.getItem('isAdminLoggedIn') !== 'true',
+  // immediately redirect back to login
+  useEffect(() => {
+    if (isAdminLoggedIn) {
+      const isAuthInSession = sessionStorage.getItem('isAdminLoggedIn') === 'true';
+      if (!isAuthInSession) {
+        adminLogout();
+      }
+    }
+  }, [isAdminLoggedIn, activeTab]);
+
+  const handleTabChange = (tab: typeof activeTab) => {
+    if (sessionStorage.getItem('isAdminLoggedIn') !== 'true') {
+      adminLogout();
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    setIsAuthenticating(true);
+    try {
+      if (isRegisterMode) {
+        const res = await adminRegister(adminEmail, adminPassword);
+        if (!res.success) {
+          setLoginError(res.error || 'Помилка реєстрації нового адміністратора');
+        }
+      } else {
+        const res = await adminLogin(adminEmail, adminPassword);
+        if (!res.success) {
+          setLoginError(res.error || 'Невірний email або пароль адміністратора');
+        }
+      }
+    } catch (err: any) {
+      setLoginError(err.message || 'Помилка зв\'язку з Firebase Authentication');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  // KPIs
+  const totalProducts = products.length;
+  const totalOrders = orders.length;
+  const totalSalesSum = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+  const outOfStockCount = products.filter((p) => p.stock <= 0).length;
+  const averageOrderValue = totalOrders > 0 ? totalSalesSum / totalOrders : 0;
+
+  if (!isAdminLoggedIn) {
+    return (
+      <div className="min-h-[85vh] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 shadow-2xl p-8 text-center animate-in fade-in zoom-in-95">
+          <div className="w-14 h-14 rounded-2xl bg-slate-900 text-orange-500 mx-auto flex items-center justify-center mb-4 shadow-lg shadow-slate-900/10">
+            <Shield className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-bold font-display text-slate-900 mb-1">
+            Панель керування ISKRA
+          </h2>
+          <p className="text-xs text-slate-500 mb-2">
+            Захищена авторизація через <strong>Firebase Authentication</strong>
+          </p>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700 mb-6">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>signInWithEmailAndPassword • onAuthStateChanged</span>
+          </div>
+
+          <form
+            onSubmit={handleLoginSubmit}
+            className="space-y-4 text-left"
+          >
+            {/* Email Field */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Email адміністратора
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  disabled={isAuthenticating}
+                  placeholder="admin@iskra.ru"
+                  value={adminEmail}
+                  onChange={(e) => {
+                    setAdminEmail(e.target.value);
+                    setLoginError(null);
+                  }}
+                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-50"
+                />
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              </div>
+            </div>
+
+            {/* Password Field */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Пароль адміністратора
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  disabled={isAuthenticating}
+                  placeholder="Введіть ваш пароль"
+                  value={adminPassword}
+                  onChange={(e) => {
+                    setAdminPassword(e.target.value);
+                    setLoginError(null);
+                  }}
+                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-50 font-mono"
+                />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {loginError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2 animate-in fade-in">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span>{loginError}</span>
+                  {loginError.includes('не знайдено') && !isRegisterMode && (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRegisterMode(true);
+                          setLoginError(null);
+                        }}
+                        className="text-red-800 underline font-bold"
+                      >
+                        Створити цей обліковий запис в Firebase Auth?
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isAuthenticating}
+              className="w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10"
+            >
+              {isAuthenticating ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>
+                    {isRegisterMode ? 'Створення в Firebase Auth...' : 'Авторизація у Firebase Auth...'}
+                  </span>
+                </>
+              ) : (
+                <span>
+                  {isRegisterMode ? 'Зареєструвати адміністратора' : 'Увійти в панель керування'}
+                </span>
+              )}
+            </button>
+          </form>
+
+          {/* Toggle Register / Login */}
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegisterMode(!isRegisterMode);
+                setLoginError(null);
+              }}
+              className="text-[11px] text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              {isRegisterMode ? (
+                <span>Вже є обліковий запис? <strong>Увійти</strong></span>
+              ) : (
+                <span>Немає створеного користувача? <strong>Зареєструвати в Firebase Auth</strong></span>
+              )}
+            </button>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-slate-100">
+            <button
+              onClick={() => setActiveView('store')}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Повернутися до магазину</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Open modal for new product
+  const handleOpenAddProduct = () => {
+    setEditingProduct(null);
+    setPName('');
+    const mainKeys = Object.keys(categoriesTree);
+    setPMainCat(mainKeys[0] || '');
+    setPSubCat('');
+    setPLeafCat('');
+    setPBadge('');
+    setPSku('ISK-' + Math.floor(100 + Math.random() * 900));
+    setPStock(10);
+    setPPrice(250);
+    setPUnit('грн/шт');
+    setPDesc('');
+    setPImage('/src/assets/images/product_circuit_breaker_1790671628425.jpg');
+    setProductImageUploadError(null);
+    setProductImageTab('upload');
+    setIsProductModalOpen(true);
+  };
+
+  // Open modal for edit product
+  const handleOpenEditProduct = (p: Product) => {
+    setEditingProduct(p);
+    setPName(p.name);
+    setPMainCat(p.mainCategory || Object.keys(categoriesTree)[0] || '');
+    setPSubCat(p.subCategory || '');
+    setPLeafCat(p.category);
+    setPBadge(p.badge);
+    setPSku(p.sku);
+    setPStock(p.stock);
+    setPPrice(p.price);
+    setPUnit(p.unit);
+    setPDesc(p.desc);
+    setPImage(p.image);
+    setProductImageUploadError(null);
+    setProductImageTab(p.image?.startsWith('data:') ? 'upload' : 'upload');
+    setIsProductModalOpen(true);
+  };
+
+  const handleSaveProductForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pName.trim()) return;
+
+    const savedProd: Product = {
+      id: editingProduct ? editingProduct.id : 'prod-' + Date.now(),
+      name: pName,
+      category: pLeafCat || pSubCat || pMainCat || 'Загальне',
+      mainCategory: pMainCat,
+      subCategory: pSubCat,
+      badge: pBadge,
+      sku: pSku || 'SKU-' + Date.now(),
+      stock: Number(pStock) || 0,
+      price: Number(pPrice) || 0,
+      unit: pUnit,
+      desc: pDesc,
+      image: pImage || '/src/assets/images/hero_iskra_store_1790671594961.jpg',
+      specs: editingProduct?.specs
+    };
+
+    saveProduct(savedProd);
+    setIsProductModalOpen(false);
+  };
+
+  const handleCsvExport = () => {
+    const csv = exportProductsCSV();
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iskra_catalog_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    showToast('Каталог успішно експортовано у CSV', 'success');
+  };
+
+  const handleCsvImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        importProductsCSV(text);
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+    e.target.value = '';
+  };
+
+  const handleJsonBackupDownload = () => {
+    const jsonStr = exportJsonBackup();
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iskra_full_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    showToast('Повну резервну копію сайту скачано!', 'success');
+  };
+
+  const handleJsonBackupRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        importJsonBackup(text);
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+    e.target.value = '';
+  };
+
+  // Review management handlers
+  const openAddReviewModal = (presetProductId?: string) => {
+    setEditingReviewId(null);
+    setRAuthor('');
+    setRCity('с. Оратів');
+    setRRating(5);
+    setRProductId(presetProductId || '');
+    setRComment('');
+    setRVerified(true);
+    setRRecommended(true);
+    setRHelpful(0);
+    setRDate('Сьогодні');
+    setIsReviewModalOpen(true);
+  };
+
+  const openEditReviewModal = (rev: ProductReview) => {
+    setEditingReviewId(rev.id);
+    setRAuthor(rev.author);
+    setRCity(rev.city || '');
+    setRRating(rev.rating);
+    setRProductId(rev.productId || '');
+    setRComment(rev.comment);
+    setRVerified(rev.verifiedPurchase);
+    setRRecommended(rev.recommended);
+    setRHelpful(rev.helpfulCount || 0);
+    setRDate(rev.date || 'Нещодавно');
+    setIsReviewModalOpen(true);
+  };
+
+  const handleSaveReview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rComment.trim()) {
+      showToast('Будь ласка, введіть текст відгуку', 'info');
+      return;
+    }
+
+    if (editingReviewId) {
+      updateReview(editingReviewId, {
+        author: rAuthor.trim() || 'Покупець ISKRA',
+        city: rCity.trim() || 'с. Оратів',
+        rating: rRating,
+        productId: rProductId,
+        comment: rComment.trim(),
+        verifiedPurchase: rVerified,
+        recommended: rRecommended,
+        helpfulCount: rHelpful,
+        date: rDate
+      });
+    } else {
+      addReview({
+        author: rAuthor.trim() || 'Покупець ISKRA',
+        city: rCity.trim() || 'с. Оратів',
+        rating: rRating,
+        productId: rProductId,
+        comment: rComment.trim(),
+        verifiedPurchase: rVerified,
+        recommended: rRecommended
+      });
+    }
+
+    setIsReviewModalOpen(false);
+  };
+
+  const handleDeleteReview = (id: string) => {
+    if (window.confirm('Ви впевнені, що хочете видалити цей відгук? Дія незворотна.')) {
+      deleteReview(id);
+    }
+  };
+
+  const printOrderSlip = (order: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Накладна №${order.id}</title>
+          <style>
+            body { font-family: sans-serif; padding: 20px; color: #1e293b; }
+            h1 { font-size: 20px; border-bottom: 2px solid #0f172a; padding-bottom: 8px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; font-size: 13px; }
+            th { background: #f1f5f9; }
+            .total { font-size: 16px; font-weight: bold; margin-top: 15px; text-align: right; }
+          </style>
+        </head>
+        <body>
+          <h1>Магазин «ISKRA» — Товарний чек №${order.id}</h1>
+          <p><b>Дата:</b> ${order.date}</p>
+          <p><b>Клієнт:</b> ${order.fio} (${order.phone})</p>
+          <p><b>Доставка:</b> ${order.delivery}</p>
+          <p><b>ТТН:</b> ${order.ttn || '—'}</p>
+          <table>
+            <thead><tr><th>Товар</th><th>Кількість</th><th>Ціна</th><th>Сума</th></tr></thead>
+            <tbody>
+              ${(order.items || []).map((i: any) => `
+                <tr>
+                  <td>${i.name}</td>
+                  <td>${i.qty} ${i.unit}</td>
+                  <td>${i.price} грн</td>
+                  <td>${(i.qty * i.price).toFixed(2)} грн</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <p class="total">Разом до сплати: ${order.total.toFixed(2)} грн</p>
+          <hr style="margin-top: 30px;" />
+          <p style="font-size: 11px; color: #64748b;">Дякуємо за покупку в магазині ISKRA! (с. Оратів, тел: ${siteSettings.phone})</p>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      
+      {/* Top Admin Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-6 mb-6 border-b border-slate-200">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="bg-slate-900 text-orange-500 px-2 py-0.5 rounded text-sm font-black">
+              ADMIN PRO
+            </span>
+            <h2 className="text-xl font-bold font-display text-slate-900">
+              Панель керування ISKRA
+            </h2>
+            
+            {adminUserEmail && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-semibold border border-slate-200">
+                <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="font-mono">{adminUserEmail}</span>
+              </span>
+            )}
+
+            {/* Live Database status pill */}
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+              dbStatus === 'connected'
+                ? 'bg-emerald-100 text-emerald-800'
+                : dbStatus === 'syncing'
+                ? 'bg-amber-100 text-amber-800 animate-pulse'
+                : dbStatus === 'error'
+                ? 'bg-rose-100 text-rose-800'
+                : 'bg-slate-100 text-slate-600'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${
+                dbStatus === 'connected' ? 'bg-emerald-500' : dbStatus === 'syncing' ? 'bg-amber-500' : 'bg-slate-400'
+              }`} />
+              <span>
+                {dbStatus === 'connected' ? 'БД: Підключено' : dbStatus === 'syncing' ? 'БД: Синхронізація...' : dbStatus === 'error' ? 'БД: Помилка' : 'БД: Офлайн'}
+              </span>
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-500 mt-0.5">
+            Повне керування товарами, базою даних, замовленнями, клієнтами, аналітикою та налаштуваннями
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveView('store')}
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>На сайт</span>
+          </button>
+
+          <button
+            onClick={adminLogout}
+            className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Вийти</span>
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Overview Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+            <span>Всього товарів</span>
+            <Package className="w-4 h-4 text-orange-500" />
+          </div>
+          <div className="text-2xl font-black font-display text-slate-900 tabular-nums">
+            {totalProducts}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-0.5">
+            {outOfStockCount > 0 ? `${outOfStockCount} закінчились` : 'Всі в наявності'}
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+            <span>Замовлень</span>
+            <ShoppingCart className="w-4 h-4 text-sky-500" />
+          </div>
+          <div className="text-2xl font-black font-display text-slate-900 tabular-nums">
+            {totalOrders}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-0.5">
+            Сер. чек: {averageOrderValue.toFixed(0)} грн
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+            <span>Сума продажів</span>
+            <DollarSign className="w-4 h-4 text-emerald-500" />
+          </div>
+          <div className="text-2xl font-black font-display text-emerald-600 tabular-nums">
+            {totalSalesSum.toFixed(0)} грн
+          </div>
+          <div className="text-[10px] text-slate-400 mt-0.5">
+            Обороти за весь період
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+            <span>Хмарна БД</span>
+            <Database className="w-4 h-4 text-indigo-500" />
+          </div>
+          <div className="text-2xl font-black font-display text-indigo-600">
+            {firebaseConfig.enabled ? 'Активна' : 'Офлайн'}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+            {firebaseConfig.databaseURL ? 'RTDB підключено' : 'Потрібне налаштування'}
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs Bar */}
+      <div className="flex flex-wrap gap-1 p-1 bg-slate-200/80 rounded-xl mb-6 overflow-x-auto">
+        <button
+          onClick={() => handleTabChange('products')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'products' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          <span>Товари ({products.length})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('weekly_deal')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'weekly_deal' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Flame className={`w-4 h-4 ${weeklyDeal.enabled ? 'text-red-600 fill-red-600' : 'text-slate-400'}`} />
+          <span>Акція тижня</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold leading-none ${
+            weeklyDeal.enabled ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-500'
+          }`}>
+            {weeklyDeal.enabled ? 'Увімкнено' : 'Вимкнено'}
+          </span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('database')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'database' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Database className="w-4 h-4 text-indigo-600" />
+          <span>База даних (БД)</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('orders')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'orders' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <ShoppingCart className="w-4 h-4" />
+          <span>Замовлення ({orders.length})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('categories')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'categories' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <FolderPlus className="w-4 h-4" />
+          <span>Категорії</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('features')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'features' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Sliders className="w-4 h-4" />
+          <span>Модулі сайту</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('analytics')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'analytics' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span>Аналітика</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('clients')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'clients' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Клієнти ({Object.keys(clients).length})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('reviews')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'reviews' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Star className={`w-4 h-4 ${activeTab === 'reviews' ? 'text-amber-500 fill-amber-500' : 'text-amber-500'}`} />
+          <span>Відгуки ({reviews.length})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('design')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'design' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Palette className="w-4 h-4" />
+          <span>Дизайн</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('settings')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'settings' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Контакти & Bot</span>
+        </button>
+      </div>
+
+      {/* TAB: DATABASE CONNECTION */}
+      {activeTab === 'database' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-emerald-600" />
+                  <span>База даних Firebase (Firestore + Realtime Database)</span>
+                </h3>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  iskra-8d036
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Повна інтеграція з базою даних проєкту <strong>iskra-8d036</strong>. Синхронізує каталог товарів, замовлення, дерево категорій, клієнтську базу, зворотні дзвінки та пароль доступу.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href="https://console.firebase.google.com/project/iskra-8d036/firestore"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Консоль Firebase</span>
+              </a>
+
+              <button
+                onClick={testDbConnection}
+                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl border border-emerald-200 transition-colors flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Перевірити з'єднання</span>
+              </button>
+
+              <button
+                onClick={syncToCloud}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-emerald-600/30"
+              >
+                <CloudUpload className="w-3.5 h-3.5" />
+                <span>Вивантажити все в БД</span>
+              </button>
+
+              <button
+                onClick={fetchFromCloud}
+                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+              >
+                <CloudDownload className="w-3.5 h-3.5" />
+                <span>Завантажити з БД</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick sync options */}
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={dbConfigForm.enabled}
+                onChange={(e) => setDbConfigForm({ ...dbConfigForm, enabled: e.target.checked })}
+                className="w-4 h-4 rounded text-indigo-600"
+              />
+              <div>
+                <b className="text-slate-900">Увімкнути використання хмарної БД</b>
+                <p className="text-[11px] text-slate-500">Якщо вимкнено, сайт працює в локальному сховищі браузера (LocalStorage).</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={dbConfigForm.autoSync}
+                onChange={(e) => setDbConfigForm({ ...dbConfigForm, autoSync: e.target.checked })}
+                className="w-4 h-4 rounded text-indigo-600"
+              />
+              <div>
+                <b className="text-slate-900">Автоматична синхронізація в реальному часі</b>
+                <p className="text-[11px] text-slate-500">Миттєве отримання нових замовлень та оновлень складу через WebSockets.</p>
+              </div>
+            </label>
+          </div>
+
+          {/* Credentials Form */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              updateFirebaseConfig(dbConfigForm);
+            }}
+            className="space-y-4 text-xs max-w-2xl"
+          >
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Database URL (Firebase Realtime Database) *
+              </label>
+              <input
+                type="url"
+                required
+                value={dbConfigForm.databaseURL}
+                onChange={(e) => setDbConfigForm({ ...dbConfigForm, databaseURL: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs outline-none focus:border-indigo-500"
+                placeholder="https://your-project-default-rtdb.europe-west1.firebasedatabase.app"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">API Key *</label>
+                <input
+                  type="text"
+                  required
+                  value={dbConfigForm.apiKey}
+                  onChange={(e) => setDbConfigForm({ ...dbConfigForm, apiKey: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Project ID *</label>
+                <input
+                  type="text"
+                  required
+                  value={dbConfigForm.projectId}
+                  onChange={(e) => setDbConfigForm({ ...dbConfigForm, projectId: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Auth Domain</label>
+                <input
+                  type="text"
+                  value={dbConfigForm.authDomain}
+                  onChange={(e) => setDbConfigForm({ ...dbConfigForm, authDomain: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Storage Bucket</label>
+                <input
+                  type="text"
+                  value={dbConfigForm.storageBucket}
+                  onChange={(e) => setDbConfigForm({ ...dbConfigForm, storageBucket: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-md transition-all"
+              >
+                Зберегти параметри підключення БД
+              </button>
+            </div>
+          </form>
+
+          {/* Backup & Restore Panel */}
+          <div className="pt-6 border-t border-slate-200 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Повна резервна копія сайту (JSON Backup)
+            </h4>
+            <p className="text-xs text-slate-500">
+              Ви можете зберегти всі товари, замовлення, клієнтів і структуру каталогу у файл на комп'ютер, або відновити їх у разі потреби.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleJsonBackupDownload}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 flex items-center gap-1.5"
+              >
+                <FileDown className="w-4 h-4 text-indigo-600" />
+                <span>Скачати резервну копію (JSON)</span>
+              </button>
+
+              <label className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 flex items-center gap-1.5 cursor-pointer">
+                <FileUp className="w-4 h-4 text-indigo-600" />
+                <span>Відновити з резервної копії</span>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleJsonBackupRestore}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* TAB: WEEKLY DEAL (АКЦІЯ ТИЖНЯ) */}
+      {activeTab === 'weekly_deal' && (
+        <div className="space-y-6 max-w-4xl">
+          
+          {/* Header Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-red-100 text-red-600">
+                    <Flame className="w-5 h-5 fill-red-600" />
+                  </span>
+                  <span>Налаштування блоку «Акція тижня»</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Керуйте показом спеціальної щотижневої акції з таймером, вигідною ціною та пульсуючою кнопкою «Купити».
+                </p>
+              </div>
+
+              {/* Status Indicator */}
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
+                  weeklyDeal.enabled 
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${weeklyDeal.enabled ? 'bg-emerald-600 animate-pulse' : 'bg-slate-400'}`} />
+                  <span>{weeklyDeal.enabled ? 'Акція активна на сайті' : 'Акція вимкнена'}</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Big Switch Card */}
+            <div className={`mt-5 p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${
+              weeklyDeal.enabled 
+                ? 'bg-emerald-50/70 border-emerald-200' 
+                : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div>
+                <b className="text-sm text-slate-900">
+                  {weeklyDeal.enabled ? 'Показ акції на сайті увімкнено' : 'Показ акції на сайті вимкнено'}
+                </b>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  {weeklyDeal.enabled 
+                    ? 'Блок «Акція тижня» зараз відображається всім відвідувачам на головній сторінці перед хітами продажу.' 
+                    : 'Секція «Акція тижня» прихована з головної сторінки. Налаштування збережені.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => updateWeeklyDeal({ enabled: !weeklyDeal.enabled })}
+                className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-2 shadow-xs active:scale-95 ${
+                  weeklyDeal.enabled
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                {weeklyDeal.enabled ? (
+                  <span>Вимкнути показ акції</span>
+                ) : (
+                  <>
+                    <Flame className="w-4 h-4 fill-white" />
+                    <span>Увімкнути показ акції</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Form Settings Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-6">
+            <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-red-600" />
+              <span>Параметри та вибір акційного товару</span>
+            </h4>
+
+            {/* Select Product */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Оберіть акційний товар з каталогу ({products.length} товарів на вибір):
+              </label>
+              <select
+                value={weeklyDeal.productId}
+                onChange={(e) => updateWeeklyDeal({ productId: e.target.value })}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-red-600 outline-none bg-white font-medium"
+              >
+                {products.map((prod) => (
+                  <option key={prod.id} value={prod.id}>
+                    [{prod.sku}] {prod.name} — {prod.price} грн ({prod.category})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Product Quick Info Pill */}
+            {(() => {
+              const activeProd = products.find(p => p.id === weeklyDeal.productId) || products[0];
+              if (!activeProd) return null;
+              const disc = weeklyDeal.discountPercent || 25;
+              const promoPrice = weeklyDeal.customPrice || Math.round(activeProd.price * (1 - disc / 100));
+              const savings = activeProd.price - promoPrice;
+
+              return (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="w-20 h-20 bg-white rounded-lg p-1 border border-slate-200 flex items-center justify-center shrink-0">
+                    {activeProd.image && activeProd.image.trim() !== '' ? (
+                      <img src={getSafeImageUrl(activeProd.image)} alt={activeProd.name} className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <Package className="w-8 h-8 text-slate-400" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 text-xs">
+                    <div className="font-mono text-[11px] text-slate-500 font-semibold">{activeProd.sku}</div>
+                    <div className="font-bold text-slate-900 text-sm">{activeProd.name}</div>
+                    <div className="text-slate-500 mt-0.5">Категорія: {activeProd.category} | Залишок: {activeProd.stock} шт</div>
+                  </div>
+
+                  <div className="text-right sm:border-l sm:border-slate-200 sm:pl-4">
+                    <div className="text-xs text-slate-400 line-through">{activeProd.price} грн</div>
+                    <div className="text-lg font-black text-red-600">{promoPrice} грн</div>
+                    <div className="text-[11px] font-bold text-emerald-700">Економія: {savings} грн (-{disc}%)</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Promotion Titles and Subtitle */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Заголовок блоку
+                </label>
+                <input
+                  type="text"
+                  value={weeklyDeal.title}
+                  onChange={(e) => updateWeeklyDeal({ title: e.target.value })}
+                  placeholder="Акція тижня"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-red-600 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Текст бейджа
+                </label>
+                <input
+                  type="text"
+                  value={weeklyDeal.badgeText}
+                  onChange={(e) => updateWeeklyDeal({ badgeText: e.target.value })}
+                  placeholder="🔥 АКЦІЯ ТИЖНЯ"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-red-600 outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Рекламний підзаголовок / опис спеціальної пропозиції
+              </label>
+              <textarea
+                rows={2}
+                value={weeklyDeal.subtitle}
+                onChange={(e) => updateWeeklyDeal({ subtitle: e.target.value })}
+                placeholder="Спеціальна пропозиція зі знижкою 25% на преміум змішувач..."
+                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-red-600 outline-none resize-none"
+              />
+            </div>
+
+            {/* Discount Percentage and Presets */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                <span>Розмір знижки (%)</span>
+                <span className="text-red-600 font-extrabold">{weeklyDeal.discountPercent || 25}%</span>
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                {[10, 15, 20, 25, 30, 35, 40, 50].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => updateWeeklyDeal({ discountPercent: pct, customPrice: undefined })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      weeklyDeal.discountPercent === pct && !weeklyDeal.customPrice
+                        ? 'bg-red-600 text-white shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    -{pct}%
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                <div>
+                  <span className="text-[11px] text-slate-500 block mb-1">Або введіть довільний % знижки:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={weeklyDeal.discountPercent || 25}
+                    onChange={(e) => updateWeeklyDeal({ discountPercent: Number(e.target.value) || 0, customPrice: undefined })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-red-600 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-slate-500 block mb-1">Або точна акційна ціна вручну (грн):</span>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Залишити порожнім для авторозрахунку"
+                    value={weeklyDeal.customPrice || ''}
+                    onChange={(e) => updateWeeklyDeal({ customPrice: e.target.value ? Number(e.target.value) : undefined })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-red-600 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Timer Management */}
+            <div className="pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-red-600" />
+                <span>Швидке налаштування таймера зворотного відліку</span>
+              </label>
+
+              <div className="flex flex-wrap gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => updateWeeklyDeal({ endTimestamp: Date.now() + 3 * 86400000 + 12 * 3600000, endDateText: '3 дні 12 год' })}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                >
+                  +3.5 дні від зараз
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateWeeklyDeal({ endTimestamp: Date.now() + 7 * 86400000, endDateText: '7 днів' })}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                >
+                  +7 днів від зараз
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const dayOfWeek = now.getDay();
+                    const daysUntilSunday = (7 - dayOfWeek) % 7 || 7;
+                    const nextSunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilSunday, 23, 59, 59);
+                    updateWeeklyDeal({ endTimestamp: nextSunday.getTime(), endDateText: 'До кінця неділі 23:59' });
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold"
+                >
+                  До кінця неділі 23:59
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Live Preview Card */}
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl p-6 text-white">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Живий попередній перегляд (так його бачать покупці на сайті)</span>
+              </span>
+              <span className="text-[11px] text-red-400 font-semibold">
+                Кнопка «Купити» пульсує в реальному часі
+              </span>
+            </div>
+
+            {/* Mini preview of the WeeklyDealSection */}
+            <div className="bg-slate-950/80 rounded-2xl p-4 border border-red-500/20">
+              {(() => {
+                const prod = products.find(p => p.id === weeklyDeal.productId) || products[0];
+                if (!prod) return null;
+                const disc = weeklyDeal.discountPercent || 25;
+                const pPrice = weeklyDeal.customPrice || Math.round(prod.price * (1 - disc / 100));
+
+                return (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-20 h-20 bg-white rounded-xl p-2 flex items-center justify-center shrink-0">
+                        {prod.image && prod.image.trim() !== '' ? (
+                          <img src={getSafeImageUrl(prod.image)} alt={prod.name} className="max-h-full max-w-full object-contain" />
+                        ) : (
+                          <Package className="w-8 h-8 text-slate-400" />
+                        )}
+                        <span className="absolute top-1 left-1 bg-red-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded">
+                          -{disc}%
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] text-red-400 font-mono font-bold">АКЦІЯ ТИЖНЯ</div>
+                        <div className="text-sm font-bold text-white line-clamp-1">{prod.name}</div>
+                        <div className="flex items-baseline gap-2 mt-1">
+                          <span className="text-lg font-black text-white">{pPrice} грн</span>
+                          <span className="text-xs text-slate-400 line-through">{prod.price} грн</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* The Pulsing Buy Button Preview */}
+                    <div className="relative inline-flex items-center">
+                      <button
+                        type="button"
+                        className="relative px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-white flex items-center gap-2 bg-red-600 hover:bg-red-700 btn-pulse-red shadow-sm"
+                      >
+                        <ShoppingBag className="w-4 h-4 stroke-[2]" />
+                        <span>Купити по акції</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* TAB: FEATURES & SITE CONTROLS */}
+      {activeTab === 'features' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6 max-w-3xl">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Sliders className="w-5 h-5 text-orange-600" />
+              <span>Керування функціоналом та модулями магазину</span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              Гнучке налаштування поведінки сайту: вмикайте або вимикайте модулі за потреби
+            </p>
+          </div>
+
+          <div className="space-y-4 text-xs divide-y divide-slate-100">
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <Flame className="w-4 h-4 text-red-600 fill-red-600" />
+                  <b className="text-slate-900">Блок «Акція тижня» на головній сторінці сайту</b>
+                </div>
+                <p className="text-slate-500 mt-0.5">Вмикає або вимикає промо-блок з таймером, акційною ціною та пульсуючою кнопкою «Купити».</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => updateWeeklyDeal({ enabled: !weeklyDeal.enabled })}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    weeklyDeal.enabled ? 'bg-red-600' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      weeklyDeal.enabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <b className="text-slate-900">Модуль онлайн-кошика та оформлення замовлень</b>
+                <p className="text-slate-500">Якщо вимкнено, сайт працюватиме в режимі електронного каталогу-вітрини.</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={siteSettings.features?.ordersEnabled ?? true}
+                onChange={(e) => updateSiteFeatures({ ordersEnabled: e.target.checked })}
+                className="w-5 h-5 text-orange-600 rounded"
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <b className="text-slate-900">Особистий кабінет та бонусна програма</b>
+                <p className="text-slate-500">Вмикає нарахування кешбеку та персональні знижки для постійних клієнтів.</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={siteSettings.features?.loyaltyEnabled ?? true}
+                onChange={(e) => updateSiteFeatures({ loyaltyEnabled: e.target.checked })}
+                className="w-5 h-5 text-orange-600 rounded"
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <b className="text-slate-900">Відображення точної кількості товару на складі</b>
+                <p className="text-slate-500">Показувати покупцям конкретний залишок (напр., «В наявності: 15 шт.») замість просто «В наявності».</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={siteSettings.features?.showExactStock ?? true}
+                onChange={(e) => updateSiteFeatures({ showExactStock: e.target.checked })}
+                className="w-5 h-5 text-orange-600 rounded"
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <b className="text-slate-900">Плаваюча кнопка швидкого дзвінка</b>
+                <p className="text-slate-500">Показує круглу кнопку консультації з телефоном у правому нижньому кутку.</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={siteSettings.features?.floatingCallBtn ?? true}
+                onChange={(e) => updateSiteFeatures({ floatingCallBtn: e.target.checked })}
+                className="w-5 h-5 text-orange-600 rounded"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-3">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Мінімальна сума замовлення (грн)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={siteSettings.features?.minOrderSum ?? 50}
+                  onChange={(e) => updateSiteFeatures({ minOrderSum: Number(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Поріг безкоштовної доставки (грн)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={siteSettings.features?.freeShippingThreshold ?? 3000}
+                  onChange={(e) => updateSiteFeatures({ freeShippingThreshold: Number(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                />
+              </div>
+            </div>
+
+            {/* Change Admin Password */}
+            <div className="pt-4 space-y-3">
+              <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
+                <Key className="w-4 h-4 text-orange-600" />
+                <span>Зміна пароля адміністратора</span>
+              </h4>
+              <div className="flex gap-2 max-w-sm">
+                <input
+                  type="password"
+                  placeholder="Новий пароль адміністратора"
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-xl text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={isSavingPassword}
+                  onClick={async () => {
+                    if (newPasswordInput.length < 4) {
+                      showToast('Пароль має містити щонайменше 4 символи', 'error');
+                      return;
+                    }
+                    setIsSavingPassword(true);
+                    try {
+                      await saveAdminPasswordToFirestore(firebaseConfig, newPasswordInput);
+                      updateSiteSettings({
+                        ...siteSettings,
+                        adminPassword: newPasswordInput
+                      });
+                      setNewPasswordInput('');
+                      showToast('Пароль успішно оновлено в базі даних Firebase Firestore!', 'success');
+                    } catch {
+                      showToast('Помилка оновлення пароля в базі даних', 'error');
+                    } finally {
+                      setIsSavingPassword(false);
+                    }
+                  }}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                >
+                  {isSavingPassword ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Key className="w-3.5 h-3.5" />
+                  )}
+                  <span>Оновити в базі</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: ANALYTICS & REPORTS */}
+      {activeTab === 'analytics' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-600" />
+              <span>Аналітика продажів та активність магазину</span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              Показники виручки, ефективність категорій та розподіл статусів
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                Розподіл за статусами:
+              </h4>
+              <div className="space-y-2 text-xs">
+                {['Створено', 'Оплачено', 'Збирається', 'Відправлено', 'Доставлено'].map((st) => {
+                  const count = orders.filter((o) => o.status === st).length;
+                  const percent = orders.length > 0 ? Math.round((count / orders.length) * 100) : 0;
+                  return (
+                    <div key={st} className="space-y-1">
+                      <div className="flex justify-between font-medium">
+                        <span>{st}</span>
+                        <span className="font-bold">{count} ({percent}%)</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-orange-500 rounded-full"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 md:col-span-2">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                Останні транзакції та продажі:
+              </h4>
+              <div className="divide-y divide-slate-200 text-xs">
+                {orders.slice(0, 5).map((o) => (
+                  <div key={o.id} className="py-2.5 flex justify-between items-center">
+                    <div>
+                      <b className="text-slate-900">№{o.id}</b> · {o.fio}
+                      <div className="text-[11px] text-slate-400">{o.date} · {o.delivery}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-bold text-emerald-600 text-sm">{o.total.toFixed(2)} грн</span>
+                      <div className="text-[10px] text-slate-500">{o.status}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: PRODUCTS */}
+      {activeTab === 'products' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          
+          {/* Action bar & Filters */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2 flex-1 max-w-xl">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Шукати за назвою або артикулом..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-none"
+                />
+              </div>
+
+              <select
+                value={productFilterStock}
+                onChange={(e) => setProductFilterStock(e.target.value as any)}
+                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-medium"
+              >
+                <option value="all">Всі товари ({products.length})</option>
+                <option value="in_stock">Тільки в наявності ({products.filter(p => p.stock > 0).length})</option>
+                <option value="out_of_stock">Закінчилися ({products.filter(p => p.stock <= 0).length})</option>
+              </select>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleOpenAddProduct}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-orange-600/30"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Додати товар</span>
+              </button>
+
+              <button
+                onClick={handleCsvExport}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+                title="Експорт каталогу у CSV"
+              >
+                <FileDown className="w-4 h-4" />
+                <span>Експорт CSV</span>
+              </button>
+
+              <label className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer">
+                <FileUp className="w-4 h-4" />
+                <span>Імпорт CSV</span>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCsvImport}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                onClick={() => {
+                  if (confirm('Скинути всі товари до стандартних?')) {
+                    resetDefaultCatalog();
+                  }
+                }}
+                className="px-3 py-2 text-rose-600 hover:bg-rose-50 text-xs font-bold rounded-xl"
+              >
+                Скинути
+              </button>
+            </div>
+          </div>
+
+          {/* Bulk Price Adjuster Panel */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-orange-500" />
+              <span className="font-semibold text-slate-700">Масова зміна цін:</span>
+              <input
+                type="number"
+                value={bulkPercent}
+                onChange={(e) => setBulkPercent(Number(e.target.value))}
+                className="w-16 px-2 py-1 border border-slate-300 rounded font-mono text-center"
+              />
+              <span className="text-slate-500">%</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Підняти ціни на ВСІ товари на +${bulkPercent}%?`)) {
+                    bulkAdjustPrices(Math.abs(bulkPercent));
+                  }
+                }}
+                className="px-3 py-1 bg-emerald-600 text-white rounded-lg font-bold"
+              >
+                +{bulkPercent}% до всіх цін
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Знизити ціни на ВСІ товари на -${bulkPercent}%?`)) {
+                    bulkAdjustPrices(-Math.abs(bulkPercent));
+                  }
+                }}
+                className="px-3 py-1 bg-rose-600 text-white rounded-lg font-bold"
+              >
+                -{bulkPercent}% (Знижка)
+              </button>
+            </div>
+          </div>
+
+          {/* Products Table */}
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                <tr>
+                  <th className="py-3 px-4">Фото</th>
+                  <th className="py-3 px-4">Назва / Категорія</th>
+                  <th className="py-3 px-4">Артикул</th>
+                  <th className="py-3 px-4">Склад</th>
+                  <th className="py-3 px-4">Ціна (грн)</th>
+                  <th className="py-3 px-4 text-right">Дії</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {products
+                  .filter((p) => {
+                    const matchQ = p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase());
+                    const matchStock = productFilterStock === 'all' ? true : productFilterStock === 'in_stock' ? p.stock > 0 : p.stock <= 0;
+                    return matchQ && matchStock;
+                  })
+                  .map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50/70">
+                      <td className="py-2.5 px-4">
+                        {p.image && p.image.trim() !== '' ? (
+                          <img
+                            src={getSafeImageUrl(p.image)}
+                            alt={p.name}
+                            className="w-10 h-10 rounded-lg object-contain bg-slate-100 p-0.5"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+                            <Package className="w-5 h-5" />
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 max-w-xs">
+                        <div className="font-bold text-slate-900 leading-snug line-clamp-1">
+                          {p.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {p.category} {p.badge ? `· ${p.badge}` : ''}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4 font-mono text-slate-600">
+                        {p.sku}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <input
+                          type="number"
+                          min="0"
+                          value={p.stock}
+                          onChange={(e) => updateProductStock(p.id, parseInt(e.target.value) || 0)}
+                          className={`w-16 px-2 py-1 border rounded text-xs font-mono tabular-nums ${
+                            p.stock <= 0 ? 'border-rose-400 bg-rose-50 text-rose-700 font-bold' : 'border-slate-300'
+                          }`}
+                        />
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={p.price}
+                            onChange={(e) => updateProductPrice(p.id, parseFloat(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 border border-slate-300 rounded font-bold font-display text-slate-900 tabular-nums"
+                          />
+                          <span className="text-[10px] text-slate-400">{p.unit}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4 text-right space-x-1">
+                        <button
+                          onClick={() => handleOpenEditProduct(p)}
+                          className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
+                          title="Редагувати"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Видалити товар "${p.name}"?`)) {
+                              deleteProduct(p.id);
+                            }
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                          title="Видалити"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      )}
+
+      {/* TAB: ORDERS */}
+      {activeTab === 'orders' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2 flex-1 max-w-xl">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Пошук за номером, клієнтом або телефоном..."
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-none"
+                />
+              </div>
+
+              <select
+                value={orderFilterStatus}
+                onChange={(e) => setOrderFilterStatus(e.target.value)}
+                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-medium"
+              >
+                <option value="all">Всі статуси</option>
+                <option value="Створено">Створено</option>
+                <option value="Оплачено">Оплачено</option>
+                <option value="Збирається">Збирається</option>
+                <option value="Відправлено">Відправлено</option>
+                <option value="Доставлено">Доставлено</option>
+              </select>
+            </div>
+
+            {confirmClearAllOrders ? (
+              <div className="flex items-center gap-2 animate-in fade-in">
+                <span className="text-xs text-rose-600 font-bold">Точно видалити всі замовлення?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAllOrders();
+                    setConfirmClearAllOrders(false);
+                  }}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                >
+                  Так, очистити
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearAllOrders(false)}
+                  className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Скасувати
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmClearAllOrders(true)}
+                className="text-xs font-bold text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-xl transition-colors cursor-pointer"
+              >
+                Очистити всі замовлення
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {orders.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-slate-200">
+                Замовлень поки немає
+              </div>
+            ) : (
+              orders
+                .filter((o) => {
+                  const matchQ = o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                    o.fio.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                    o.phone.toLowerCase().includes(orderSearch.toLowerCase());
+                  const matchStatus = orderFilterStatus === 'all' || o.status === orderFilterStatus;
+                  return matchQ && matchStatus;
+                })
+                .map((o) => (
+                  <div key={o.id} className="bg-slate-50 rounded-2xl border border-slate-200 p-4 sm:p-5 text-xs space-y-3.5 shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 font-display text-sm">
+                          Замовлення №{o.id}
+                        </span>
+                        <span className="text-slate-400 font-mono">({o.date})</span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Edit order button */}
+                        <button
+                          type="button"
+                          onClick={() => setEditingOrder({ ...o, items: o.items.map(it => ({ ...it })) })}
+                          className="px-2.5 py-1 text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-100 rounded-lg border border-slate-300 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                          title="Редагувати замовлення"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-orange-600" />
+                          <span>Редагувати</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => printOrderSlip(o)}
+                          className="p-1.5 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-1 font-semibold transition-colors"
+                          title="Друкувати товарний чек"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>Чек</span>
+                        </button>
+
+                        <select
+                          value={o.status}
+                          onChange={(e) => updateOrderStatus(o.id, e.target.value as OrderStatus)}
+                          className="px-2.5 py-1 rounded-lg border border-slate-300 font-bold bg-white text-slate-800 outline-none"
+                        >
+                          <option value="Створено">Створено</option>
+                          <option value="Оплачено">Оплачено</option>
+                          <option value="Збирається">Збирається</option>
+                          <option value="Відправлено">Відправлено</option>
+                          <option value="Доставлено">Доставлено</option>
+                        </select>
+
+                        {/* Safe Delete order button with inline confirm */}
+                        {orderToDelete === o.id ? (
+                          <div className="flex items-center gap-1.5 animate-in fade-in bg-rose-50 p-1 rounded-lg border border-rose-200">
+                            <span className="text-[11px] font-bold text-rose-700">Видалити?</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                deleteOrder(o.id);
+                                setOrderToDelete(null);
+                              }}
+                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold shadow-xs transition-colors"
+                            >
+                              Так
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOrderToDelete(null)}
+                              className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[11px] font-medium transition-colors"
+                            >
+                              Ні
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setOrderToDelete(o.id)}
+                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Видалити замовлення"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Customer info & TTN */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <p>
+                            <b>Клієнт:</b> <span className="font-semibold text-slate-900">{o.fio}</span>
+                          </p>
+                          {/* Quick client card trigger */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const existing = clients[o.phone] || {
+                                name: o.fio,
+                                balance: 0,
+                                discount: 0,
+                                city: o.city,
+                                notes: ''
+                              };
+                              setClientForm({
+                                phone: o.phone,
+                                originalPhone: o.phone,
+                                name: existing.name || o.fio,
+                                balance: existing.balance || 0,
+                                discount: existing.discount || 0,
+                                city: existing.city || o.city || '',
+                                notes: existing.notes || '',
+                                isNew: !clients[o.phone]
+                              });
+                              setClientModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200/80 px-2 py-0.5 rounded-lg transition-colors"
+                            title="Редагувати клієнта"
+                          >
+                            <UserCheck className="w-3 h-3" />
+                            <span>Картка клієнта</span>
+                          </button>
+                        </div>
+
+                        <p>
+                          <b>Телефон:</b>{' '}
+                          <a href={`tel:${o.phone}`} className="text-orange-600 font-semibold hover:underline">
+                            {o.phone}
+                          </a>
+                        </p>
+                        {o.city && (
+                          <p><b>Місто:</b> {o.city}</p>
+                        )}
+                        <p><b>Доставка:</b> {o.delivery}</p>
+                        {o.paymentMethod && (
+                          <p>
+                            <b>Оплата:</b>{' '}
+                            <span className="font-semibold text-slate-800">
+                              {o.paymentMethod === 'cash_on_delivery' && 'Накладений платіж'}
+                              {o.paymentMethod === 'card_online' && 'Оплата карткою онлайн'}
+                              {o.paymentMethod === 'bank_invoice' && 'Безготівковий розрахунок'}
+                            </span>
+                          </p>
+                        )}
+                        <p className="pt-1">
+                          <b>Сума:</b>{' '}
+                          <span className="text-emerald-700 font-black text-sm tabular-nums">
+                            {o.total.toFixed(2)} грн
+                          </span>
+                        </p>
+                        {o.notes && (
+                          <p className="text-[11px] text-slate-500 bg-amber-50/80 border border-amber-200/60 p-2 rounded-xl mt-1">
+                            <b>Коментар:</b> {o.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-200 self-start">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Номер ТТН (Нова Пошта):
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            defaultValue={o.ttn || ''}
+                            id={`ttn-input-${o.id}`}
+                            placeholder="напр., 20450891234567"
+                            className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono outline-none focus:border-orange-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = (document.getElementById(`ttn-input-${o.id}`) as HTMLInputElement)?.value;
+                              updateOrderTtn(o.id, (val || '').trim());
+                            }}
+                            className="px-3 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-lg hover:bg-slate-800 transition-colors shrink-0"
+                          >
+                            Зберегти ТТН
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order items */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200">
+                      <span className="font-bold text-slate-700">Товари в чеку:</span>
+                      <ul className="mt-1 space-y-1 text-slate-600 pl-4 list-disc">
+                        {o.items?.map((item: any, idx: number) => (
+                          <li key={idx} className="leading-snug">
+                            <span className="font-medium text-slate-900">{item.name}</span> — <b>{item.qty} {item.unit}</b> ({item.price} грн)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                  </div>
+                ))
+            )}
+          </div>
+
+          {/* Edit Order Modal */}
+          {editingOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+              <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 animate-in zoom-in-95 my-8 max-h-[90vh] flex flex-col">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 shrink-0">
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900 font-display">
+                      Редагування замовлення №{editingOrder.id}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Дата оформлення: {editingOrder.date}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingOrder(null)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    // Recalculate total from items
+                    const newTotal = editingOrder.items.reduce((sum, it) => sum + (it.price * it.qty), 0);
+                    editOrder(editingOrder.id, {
+                      ...editingOrder,
+                      total: newTotal
+                    });
+                    setEditingOrder(null);
+                  }}
+                  className="space-y-4 text-xs overflow-y-auto pr-1 py-4 flex-1"
+                >
+                  {/* Recipient Details */}
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-3">
+                    <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-orange-600" />
+                      <span>Дані клієнта та адреса доставки</span>
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          ПІБ клієнта *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingOrder.fio}
+                          onChange={(e) => setEditingOrder({ ...editingOrder, fio: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:border-orange-500 font-medium"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                          <span>Номер телефону *</span>
+                          <span className="text-[10px] text-orange-600 font-normal">Приклад: +380 (67)...</span>
+                        </label>
+                        <input
+                          type="tel"
+                          required
+                          placeholder="+380 (67) 000-00-00"
+                          value={editingOrder.phone}
+                          onChange={(e) => setEditingOrder({ ...editingOrder, phone: formatUkrainianPhone(e.target.value) })}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:border-orange-500 font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Місто / Населений пункт
+                        </label>
+                        <input
+                          type="text"
+                          value={editingOrder.city || ''}
+                          onChange={(e) => setEditingOrder({ ...editingOrder, city: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:border-orange-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Спосіб та адреса доставки / Відділення
+                        </label>
+                        <input
+                          type="text"
+                          value={editingOrder.delivery}
+                          onChange={(e) => setEditingOrder({ ...editingOrder, delivery: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:border-orange-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Order Parameters */}
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-3">
+                    <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Settings className="w-3.5 h-3.5 text-orange-600" />
+                      <span>Статус, ТТН та спосіб оплати</span>
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Статус замовлення
+                        </label>
+                        <select
+                          value={editingOrder.status}
+                          onChange={(e) => setEditingOrder({ ...editingOrder, status: e.target.value as OrderStatus })}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-slate-800 outline-none"
+                        >
+                          <option value="Створено">Створено</option>
+                          <option value="Оплачено">Оплачено</option>
+                          <option value="Збирається">Збирається</option>
+                          <option value="Відправлено">Відправлено</option>
+                          <option value="Доставлено">Доставлено</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Номер ТТН (Нова Пошта)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="20450..."
+                          value={editingOrder.ttn || ''}
+                          onChange={(e) => setEditingOrder({ ...editingOrder, ttn: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-mono text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Спосіб оплати
+                        </label>
+                        <select
+                          value={editingOrder.paymentMethod || 'cash_on_delivery'}
+                          onChange={(e) => setEditingOrder({ ...editingOrder, paymentMethod: e.target.value as any })}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 outline-none"
+                        >
+                          <option value="cash_on_delivery">Накладений платіж</option>
+                          <option value="card_online">Оплата карткою онлайн</option>
+                          <option value="bank_invoice">Безготівковий розрахунок</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Нотатки менеджера / Коментар до замовлення
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="Додаткова інформація, побажання клієнта..."
+                        value={editingOrder.notes || ''}
+                        onChange={(e) => setEditingOrder({ ...editingOrder, notes: e.target.value })}
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl bg-white outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Order Items List */}
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                        <ShoppingBag className="w-3.5 h-3.5 text-orange-600" />
+                        <span>Товари в чеку ({editingOrder.items.length})</span>
+                      </h4>
+                      <div className="text-xs font-black text-emerald-700">
+                        Сума: {editingOrder.items.reduce((sum, it) => sum + (it.price * it.qty), 0).toFixed(2)} грн
+                      </div>
+                    </div>
+
+                    {/* Table of items */}
+                    <div className="space-y-2">
+                      {editingOrder.items.map((it, idx) => (
+                        <div key={idx} className="flex items-center justify-between gap-2 p-2.5 bg-white rounded-xl border border-slate-200">
+                          <div className="flex-1 min-w-0 pr-2">
+                            <p className="font-bold text-slate-900 truncate">{it.name}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">{it.sku || 'Без артикулу'}</p>
+                          </div>
+
+                          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                            {/* Qty controls */}
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newItems = [...editingOrder.items];
+                                  if (newItems[idx].qty > 1) {
+                                    newItems[idx].qty -= 1;
+                                    setEditingOrder({ ...editingOrder, items: newItems });
+                                  }
+                                }}
+                                className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold text-slate-700 cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min={1}
+                                value={it.qty}
+                                onChange={(e) => {
+                                  const val = Math.max(1, parseInt(e.target.value) || 1);
+                                  const newItems = [...editingOrder.items];
+                                  newItems[idx].qty = val;
+                                  setEditingOrder({ ...editingOrder, items: newItems });
+                                }}
+                                className="w-10 text-center py-0.5 border border-slate-200 rounded font-bold"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newItems = [...editingOrder.items];
+                                  newItems[idx].qty += 1;
+                                  setEditingOrder({ ...editingOrder, items: newItems });
+                                }}
+                                className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold text-slate-700 cursor-pointer"
+                              >
+                                +
+                              </button>
+                              <span className="text-[10px] text-slate-400">{it.unit}</span>
+                            </div>
+
+                            {/* Price */}
+                            <div className="w-16 sm:w-20 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                value={it.price}
+                                onChange={(e) => {
+                                  const val = Math.max(0, parseFloat(e.target.value) || 0);
+                                  const newItems = [...editingOrder.items];
+                                  newItems[idx].price = val;
+                                  setEditingOrder({ ...editingOrder, items: newItems });
+                                }}
+                                className="w-full text-right py-0.5 px-1 border border-slate-200 rounded font-bold text-emerald-700"
+                              />
+                            </div>
+
+                            {/* Delete item */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newItems = editingOrder.items.filter((_, i) => i !== idx);
+                                setEditingOrder({ ...editingOrder, items: newItems });
+                              }}
+                              className="text-rose-400 hover:text-rose-600 p-1 cursor-pointer"
+                              title="Видалити товар із чека"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Add product to order */}
+                    <div className="pt-2 flex items-center gap-2">
+                      <select
+                        value={addOrderItemId}
+                        onChange={(e) => setAddOrderItemId(e.target.value)}
+                        className="flex-1 px-3 py-1.5 border border-slate-300 rounded-xl bg-white text-xs outline-none"
+                      >
+                        <option value="">-- Додати товар із каталогу --</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.price} грн)
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!addOrderItemId) return;
+                          const prod = products.find((p) => p.id === addOrderItemId);
+                          if (!prod) return;
+                          const existingIdx = editingOrder.items.findIndex((it) => it.sku === prod.sku || it.name === prod.name);
+                          let newItems = [...editingOrder.items];
+                          if (existingIdx > -1) {
+                            newItems[existingIdx].qty += 1;
+                          } else {
+                            newItems.push({
+                              name: prod.name,
+                              qty: 1,
+                              price: prod.price,
+                              unit: prod.unit,
+                              sku: prod.sku,
+                              image: prod.image
+                            });
+                          }
+                          setEditingOrder({ ...editingOrder, items: newItems });
+                          setAddOrderItemId('');
+                        }}
+                        disabled={!addOrderItemId}
+                        className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl font-bold text-xs cursor-pointer"
+                      >
+                        Додати товар
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-100 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingOrder(null)}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors cursor-pointer"
+                    >
+                      Скасувати
+                    </button>
+
+                    <button
+                      type="submit"
+                      className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-md shadow-orange-600/20 transition-all cursor-pointer"
+                    >
+                      Зберегти зміни замовлення
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* TAB: CATEGORIES TREE */}
+      {activeTab === 'categories' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                Дерево категорій магазину
+              </h3>
+              <p className="text-xs text-slate-500">
+                Керуйте 3-рівневою структурою: Головні категорії → Підкатегорії → Кінцеві групи
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newMainCatInput.trim()) {
+                  addMainCategory(newMainCatInput);
+                  setNewMainCatInput('');
+                }
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Нова головна категорія..."
+                value={newMainCatInput}
+                onChange={(e) => setNewMainCatInput(e.target.value)}
+                className="px-3.5 py-2 text-xs rounded-xl border border-slate-300 outline-none w-56 focus:border-orange-500 bg-white"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm shadow-orange-600/20"
+              >
+                + Створити категорію
+              </button>
+            </form>
+          </div>
+
+          <div className="space-y-4">
+            {Object.keys(categoriesTree).length === 0 ? (
+              <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <p className="text-sm font-semibold">Список категорій порожній</p>
+                <p className="text-xs mt-1">Введіть назву вище та натисніть «+ Створити категорію»</p>
+              </div>
+            ) : (
+              Object.keys(categoriesTree).map((mainCat) => (
+                <AdminCategoryCard
+                  key={mainCat}
+                  mainCat={mainCat}
+                  mainObj={categoriesTree[mainCat] || {}}
+                  onDeleteMain={deleteMainCategory}
+                  onAddSub={addSubCategory}
+                  onDeleteSub={deleteSubCategory}
+                  onAddLeaf={addLeafCategory}
+                  onDeleteLeaf={deleteLeafCategory}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: CLIENTS & BONUSES */}
+      {activeTab === 'clients' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                База покупців, бонуси та знижки
+              </h3>
+              <p className="text-xs text-slate-500">
+                Встановлюйте індивідуальні знижки та керуйте накопичувальним балансом
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="w-56 sm:w-64 relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Пошук клієнта..."
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-900 outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setClientForm({
+                    phone: '+380',
+                    name: '',
+                    balance: 0,
+                    discount: 3,
+                    isNew: true
+                  });
+                  setClientModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold transition-colors shadow-sm shadow-orange-600/20"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>+ Додати клієнта</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                <tr>
+                  <th className="py-3 px-4">Телефон</th>
+                  <th className="py-3 px-4">Ім'я / Примітка</th>
+                  <th className="py-3 px-4">Бонусний баланс</th>
+                  <th className="py-3 px-4">Знижка (%)</th>
+                  <th className="py-3 px-4 text-right">Дії</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {Object.keys(clients).length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-400">
+                      База покупців поки порожня
+                    </td>
+                  </tr>
+                ) : (
+                  Object.keys(clients)
+                    .filter((ph) => ph.includes(clientSearch) || (clients[ph].name || '').toLowerCase().includes(clientSearch.toLowerCase()))
+                    .map((phone) => {
+                      const c = clients[phone];
+
+                      return (
+                        <tr key={phone} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-2.5 px-4 font-mono font-bold text-slate-900">
+                            {phone}
+                          </td>
+                          <td className="py-2.5 px-4 text-slate-800">
+                            {c.name || 'Покупець'}
+                          </td>
+                          <td className="py-2.5 px-4 font-bold text-emerald-600 tabular-nums">
+                            {c.balance || 0} грн
+                          </td>
+                          <td className="py-2.5 px-4 font-bold text-orange-600 tabular-nums">
+                            {c.discount || 0}%
+                          </td>
+                          <td className="py-2.5 px-4 text-right space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setClientForm({
+                                  phone: phone,
+                                  originalPhone: phone,
+                                  name: c.name || '',
+                                  balance: c.balance || 0,
+                                  discount: c.discount || 0,
+                                  city: c.city || '',
+                                  notes: c.notes || '',
+                                  isNew: false
+                                });
+                                setClientModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-semibold text-xs transition-colors"
+                            >
+                              Редагувати
+                            </button>
+
+                            {clientToDelete === phone ? (
+                              <span className="inline-flex items-center gap-1.5 animate-in fade-in">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    deleteClient(phone);
+                                    setClientToDelete(null);
+                                  }}
+                                  className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold shadow-xs"
+                                >
+                                  Так, видалити
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setClientToDelete(null)}
+                                  className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px]"
+                                >
+                                  Ні
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setClientToDelete(phone)}
+                                className="text-rose-500 hover:text-rose-700 text-xs font-semibold hover:underline"
+                              >
+                                Видалити
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Edit / Add Client Modal */}
+          {clientModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+              <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+                  <h3 className="font-bold text-base text-slate-900 font-display">
+                    {clientForm.isNew ? 'Додати нового покупця' : `Редагувати дані покупця`}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setClientModalOpen(false)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const cleanPhone = clientForm.phone.trim();
+                    if (!cleanPhone) return;
+
+                    if (!clientForm.isNew && clientForm.originalPhone && clientForm.originalPhone !== cleanPhone) {
+                      deleteClient(clientForm.originalPhone);
+                    }
+
+                    saveClient(cleanPhone, {
+                      name: clientForm.name.trim() || 'Покупець',
+                      balance: Number(clientForm.balance) || 0,
+                      discount: Number(clientForm.discount) || 0,
+                      city: clientForm.city?.trim() || '',
+                      notes: clientForm.notes?.trim() || ''
+                    });
+                    setClientModalOpen(false);
+                  }}
+                  className="space-y-4 text-xs"
+                >
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Номер телефону покупця *</span>
+                      <span className="text-[10px] text-orange-600 font-normal">Приклад: +380 (67)...</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="+380 (67) 000-00-00"
+                      value={clientForm.phone}
+                      onChange={(e) => setClientForm({ ...clientForm, phone: formatUkrainianPhone(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500 font-mono text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Ім'я або примітка
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Олександр (Майстер сантехнік)"
+                      value={clientForm.name}
+                      onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Місто / Населений пункт
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="с. Оратів, Вінниця..."
+                        value={clientForm.city || ''}
+                        onChange={(e) => setClientForm({ ...clientForm, city: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Персональна знижка (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="90"
+                        step="1"
+                        value={clientForm.discount}
+                        onChange={(e) => setClientForm({ ...clientForm, discount: parseInt(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500 font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Бонусний баланс (грн)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={clientForm.balance}
+                        onChange={(e) => setClientForm({ ...clientForm, balance: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500 font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Нотатки про клієнта
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Монтажник, оптовик..."
+                        value={clientForm.notes || ''}
+                        onChange={(e) => setClientForm({ ...clientForm, notes: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setClientModalOpen(false)}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors"
+                    >
+                      Скасувати
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-md shadow-orange-600/20 transition-all"
+                    >
+                      Зберегти в базу даних
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* TAB: CUSTOMER REVIEWS MANAGEMENT */}
+      {activeTab === 'reviews' && (
+        <div className="space-y-6">
+          
+          {/* Header & Stats */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                  <span>Керування відгуками покупців</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Редагуйте, додавайте та видаляйте відгуки клієнтів. Усі зміни автоматично синхронізуються з базою даних Firebase/Firestore.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openAddReviewModal()}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5 active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Додати відгук</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={resetDefaultReviews}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+                  title="Відновити стандартний список відгуків"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Скинути</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
+              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Всього відгуків</div>
+                <div className="text-2xl font-black text-slate-900 font-display mt-0.5">{reviews.length}</div>
+              </div>
+              <div className="bg-amber-50/70 rounded-xl p-3.5 border border-amber-100">
+                <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider">Середня оцінка</div>
+                <div className="text-2xl font-black text-amber-600 font-display mt-0.5 flex items-center gap-1">
+                  <span>
+                    {reviews.length > 0
+                      ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
+                      : '5.0'}
+                  </span>
+                  <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
+                </div>
+              </div>
+              <div className="bg-emerald-50/70 rounded-xl p-3.5 border border-emerald-100">
+                <div className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">Перевірені покупки</div>
+                <div className="text-2xl font-black text-emerald-600 font-display mt-0.5">
+                  {reviews.length > 0
+                    ? `${Math.round((reviews.filter(r => r.verifiedPurchase).length / reviews.length) * 100)}%`
+                    : '100%'}
+                </div>
+              </div>
+              <div className="bg-blue-50/70 rounded-xl p-3.5 border border-blue-100">
+                <div className="text-[11px] font-semibold text-blue-700 uppercase tracking-wider">Рекомендують товар</div>
+                <div className="text-2xl font-black text-blue-600 font-display mt-0.5">
+                  {reviews.length > 0
+                    ? `${Math.round((reviews.filter(r => r.recommended).length / reviews.length) * 100)}%`
+                    : '100%'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Search & Filters */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col sm:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Пошук за автором, містом або текстом відгуку..."
+                value={reviewSearch}
+                onChange={(e) => setReviewSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs focus:bg-white focus:border-slate-400 outline-none"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={reviewFilterRating}
+                onChange={(e) => setReviewFilterRating(e.target.value)}
+                className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs outline-none focus:border-slate-400"
+              >
+                <option value="all">Всі оцінки (зірки)</option>
+                <option value="5">⭐⭐⭐⭐⭐ 5 зірок</option>
+                <option value="4">⭐⭐⭐⭐ 4 зірки</option>
+                <option value="3">⭐⭐⭐ 3 зірки</option>
+                <option value="2">⭐⭐ 2 зірки</option>
+                <option value="1">⭐ 1 зірка</option>
+              </select>
+
+              <select
+                value={reviewFilterProduct}
+                onChange={(e) => setReviewFilterProduct(e.target.value)}
+                className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs outline-none focus:border-slate-400 max-w-xs truncate"
+              >
+                <option value="all">Всі товари & загальні</option>
+                <option value="general">Загальні відгуки магазину</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.sku})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Reviews Table / List */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4">Автор & Місто</th>
+                    <th className="py-3 px-4">Товар</th>
+                    <th className="py-3 px-4">Оцінка</th>
+                    <th className="py-3 px-4 min-w-[240px]">Текст відгуку</th>
+                    <th className="py-3 px-4">Статус</th>
+                    <th className="py-3 px-4">Корисно</th>
+                    <th className="py-3 px-4 text-right">Дії</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {reviews
+                    .filter(r => {
+                      const q = reviewSearch.toLowerCase();
+                      const matchQ = !q || 
+                        r.author.toLowerCase().includes(q) || 
+                        (r.city && r.city.toLowerCase().includes(q)) || 
+                        r.comment.toLowerCase().includes(q);
+                      
+                      const matchRating = reviewFilterRating === 'all' || String(r.rating) === reviewFilterRating;
+                      
+                      const matchProduct = reviewFilterProduct === 'all' 
+                        ? true 
+                        : reviewFilterProduct === 'general' 
+                          ? (!r.productId || r.productId === '') 
+                          : r.productId === reviewFilterProduct;
+
+                      return matchQ && matchRating && matchProduct;
+                    })
+                    .map((rev) => {
+                      const tiedProduct = products.find(p => p.id === rev.productId);
+
+                      return (
+                        <tr key={rev.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span>{rev.author}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              {rev.city || 'с. Оратів'} • {rev.date}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 max-w-[200px]">
+                            {tiedProduct ? (
+                              <div>
+                                <div className="font-semibold text-slate-800 line-clamp-1" title={tiedProduct.name}>
+                                  {tiedProduct.name}
+                                </div>
+                                <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                  {tiedProduct.sku}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="inline-block bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                Магазин ISKRA (Загальний)
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1">
+                              <div className="flex text-amber-400">
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                  <Star
+                                    key={s}
+                                    className={`w-3.5 h-3.5 ${s <= rev.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`}
+                                  />
+                                ))}
+                              </div>
+                              <span className="font-bold text-slate-700 ml-1">{rev.rating}</span>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <p className="text-slate-700 line-clamp-2 leading-relaxed">
+                              {rev.comment}
+                            </p>
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap space-y-1">
+                            {rev.verifiedPurchase && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                Перевірено
+                              </span>
+                            )}
+                            {rev.recommended && (
+                              <div className="text-[10px] text-blue-600 font-medium">
+                                Рекомендує
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="inline-flex items-center gap-1 text-slate-600 font-medium">
+                              <ThumbsUp className="w-3 h-3 text-slate-400" />
+                              <span>{rev.helpfulCount || 0}</span>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEditReviewModal(rev)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                                title="Редагувати відгук"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReview(rev.id)}
+                                className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                                title="Видалити відгук"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ADD / EDIT REVIEW MODAL */}
+          {isReviewModalOpen && (
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 text-xs text-slate-800 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <span>{editingReviewId ? 'Редагування відгуку' : 'Додавання нового відгуку'}</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setIsReviewModalOpen(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveReview} className="space-y-3.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Ім'я автора *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Олександр М."
+                        value={rAuthor}
+                        onChange={(e) => setRAuthor(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none focus:border-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Місто / Населений пункт
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="с. Оратів"
+                        value={rCity}
+                        onChange={(e) => setRCity(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none focus:border-red-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Прив'язка до товару (або загальний відгук)
+                    </label>
+                    <select
+                      value={rProductId}
+                      onChange={(e) => setRProductId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none focus:border-red-500 bg-white"
+                    >
+                      <option value="">Загальний відгук про магазин ISKRA</option>
+                      {products.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.sku}) — {p.price} грн
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Оцінка (Зірки)
+                      </label>
+                      <select
+                        value={rRating}
+                        onChange={(e) => setRRating(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none focus:border-red-500 bg-white"
+                      >
+                        <option value={5}>⭐⭐⭐⭐⭐ 5 зірок</option>
+                        <option value={4}>⭐⭐⭐⭐ 4 зірки</option>
+                        <option value={3}>⭐⭐⭐ 3 зірки</option>
+                        <option value={2}>⭐⭐ 2 зірки</option>
+                        <option value={1}>⭐ 1 зірка</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Дата (текстом)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Вчора / 3 дні тому"
+                        value={rDate}
+                        onChange={(e) => setRDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none focus:border-red-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Кількість лайків 👍
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={rHelpful}
+                        onChange={(e) => setRHelpful(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none focus:border-red-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Текст відгуку *
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      placeholder="Введіть текст відгуку..."
+                      value={rComment}
+                      onChange={(e) => setRComment(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none focus:border-red-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-5 pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={rVerified}
+                        onChange={(e) => setRVerified(e.target.checked)}
+                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                      />
+                      <span>Перевірена покупка (галочка ✓)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={rRecommended}
+                        onChange={(e) => setRRecommended(e.target.checked)}
+                        className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-4 h-4"
+                      />
+                      <span>Рекомендує товар</span>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsReviewModalOpen(false)}
+                      className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition-colors"
+                    >
+                      Скасувати
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-all shadow-sm"
+                    >
+                      Зберегти в базу даних
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* TAB: DESIGN & PROMO BANNER */}
+      {activeTab === 'design' && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateHeaderDesign(designForm);
+          }}
+          className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6 max-w-2xl"
+        >
+          <h3 className="text-sm font-bold text-slate-900">
+            Налаштування тексту та промо-банера
+          </h3>
+
+          <div className="space-y-4 text-xs">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Назва бейджа в шапці (лого)
+              </label>
+              <input
+                type="text"
+                value={designForm.logoBadge}
+                onChange={(e) => setDesignForm({ ...designForm, logoBadge: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Підпис біля логотипа
+              </label>
+              <input
+                type="text"
+                value={designForm.logoText}
+                onChange={(e) => setDesignForm({ ...designForm, logoText: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+              />
+            </div>
+
+            <div className="pt-2 border-t border-slate-100">
+              <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-900 mb-2">
+                <input
+                  type="checkbox"
+                  checked={designForm.promoActive}
+                  onChange={(e) => setDesignForm({ ...designForm, promoActive: e.target.checked })}
+                  className="rounded text-orange-600"
+                />
+                <span>Увімкнути промо-банер угорі сайту</span>
+              </label>
+
+              <textarea
+                rows={2}
+                placeholder="Текст повідомлення на банері..."
+                value={designForm.promoText}
+                onChange={(e) => setDesignForm({ ...designForm, promoText: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+              />
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Верхній бейдж над заголовком (наприклад, «Інтернет-магазин»)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Інтернет-магазин"
+                    value={designForm.heroBadge || ''}
+                    onChange={(e) => setDesignForm({ ...designForm, heroBadge: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Місто / Регіон на банері (біля напису «Інтернет-магазин»)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="с. Оратів, Вінницька обл."
+                    value={designForm.heroCity || ''}
+                    onChange={(e) => setDesignForm({ ...designForm, heroCity: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Головний заголовок банера (H1)
+                </label>
+                <input
+                  type="text"
+                  value={designForm.heroTitle}
+                  onChange={(e) => setDesignForm({ ...designForm, heroTitle: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Опис на головному банері
+                </label>
+                <textarea
+                  rows={2}
+                  value={designForm.heroDesc}
+                  onChange={(e) => setDesignForm({ ...designForm, heroDesc: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="px-6 py-2.5 bg-orange-600 text-white font-bold rounded-xl"
+            >
+              Зберегти зміни дизайну
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* TAB: SETTINGS & TELEGRAM */}
+      {activeTab === 'settings' && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateSiteSettings(settingsForm);
+          }}
+          className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6 max-w-2xl"
+        >
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">
+              Контактні дані та Telegram-сповіщення
+            </h3>
+            <p className="text-xs text-slate-500">
+              Вкажіть номер телефону для дзвінків та токен бота для отримання замовлень у Telegram
+            </p>
+          </div>
+
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Телефон для замовлень</label>
+                <input
+                  type="text"
+                  value={settingsForm.phone}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Місто / Селище</label>
+                <input
+                  type="text"
+                  value={settingsForm.city}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, city: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Адреса магазину</label>
+              <input
+                type="text"
+                value={settingsForm.address}
+                onChange={(e) => setSettingsForm({ ...settingsForm, address: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Графік роботи</label>
+              <input
+                type="text"
+                value={settingsForm.workHours}
+                onChange={(e) => setSettingsForm({ ...settingsForm, workHours: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+              />
+            </div>
+
+            {/* Telegram Bot */}
+            <div className="pt-4 border-t border-slate-100 space-y-3 bg-sky-50/50 p-4 rounded-xl border border-sky-100">
+              <div className="font-bold text-sky-950 flex items-center gap-1.5">
+                <Send className="w-4 h-4 text-sky-600" />
+                <span>Миттєві сповіщення у Telegram</span>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Telegram Bot Token
+                </label>
+                <input
+                  type="text"
+                  placeholder="напр., 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                  value={settingsForm.botToken}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, botToken: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs bg-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Telegram Chat ID
+                </label>
+                <input
+                  type="text"
+                  placeholder="напр., 987654321"
+                  value={settingsForm.chatId}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, chatId: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs bg-white outline-none"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!settingsForm.botToken || !settingsForm.chatId) {
+                    showToast('Введіть Bot Token та Chat ID для тесту', 'error');
+                    return;
+                  }
+                  fetch(`https://api.telegram.org/bot${settingsForm.botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      chat_id: settingsForm.chatId,
+                      text: "✅ Тестове сповіщення від магазину ISKRA. З'єднання працює ідеально!",
+                      parse_mode: 'Markdown'
+                    })
+                  })
+                    .then(() => showToast('Тестове повідомлення надіслано в Telegram!', 'success'))
+                    .catch(() => showToast('Помилка надсилання в Telegram', 'error'));
+                }}
+                className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg"
+              >
+                Надіслати тестове повідомлення
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              className="px-6 py-2.5 bg-orange-600 text-white font-bold rounded-xl"
+            >
+              Зберегти всі налаштування
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* PRODUCT ADD / EDIT MODAL */}
+      {isProductModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setIsProductModalOpen(false)} />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200">
+              <h3 className="text-base font-bold font-display text-slate-900 mb-4 pb-3 border-b border-slate-100 flex items-center justify-between">
+                <span>{editingProduct ? 'Редагувати товар' : 'Додати новий товар'}</span>
+                <button onClick={() => setIsProductModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  ×
+                </button>
+              </h3>
+
+              <form onSubmit={handleSaveProductForm} className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Назва товару *</label>
+                  <input
+                    type="text"
+                    required
+                    value={pName}
+                    onChange={(e) => setPName(e.target.value)}
+                    placeholder="напр., Змішувач для ванни одноважільний"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                  />
+                </div>
+
+                {/* Cascading Category Pickers */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">1. Головна категорія</label>
+                    <select
+                      value={pMainCat}
+                      onChange={(e) => {
+                        setPMainCat(e.target.value);
+                        setPSubCat('');
+                        setPLeafCat('');
+                      }}
+                      className="w-full px-2.5 py-2 border border-slate-300 rounded-xl bg-white"
+                    >
+                      {Object.keys(categoriesTree).map((main) => (
+                        <option key={main} value={main}>{main}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">2. Підкатегорія</label>
+                    <select
+                      value={pSubCat}
+                      onChange={(e) => {
+                        setPSubCat(e.target.value);
+                        setPLeafCat('');
+                      }}
+                      className="w-full px-2.5 py-2 border border-slate-300 rounded-xl bg-white"
+                    >
+                      <option value="">(Без підкатегорії)</option>
+                      {pMainCat && categoriesTree[pMainCat] && Object.keys(categoriesTree[pMainCat]).filter(k => k !== '_leaves').map((sub) => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">3. Кінцева категорія *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="напр., Змішувач"
+                      value={pLeafCat}
+                      onChange={(e) => setPLeafCat(e.target.value)}
+                      className="w-full px-2.5 py-2 border border-slate-300 rounded-xl bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Артикул (SKU) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={pSku}
+                      onChange={(e) => setPSku(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Спеціальна мітка</label>
+                    <select
+                      value={pBadge}
+                      onChange={(e) => setPBadge(e.target.value as ProductBadge)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white"
+                    >
+                      <option value="">(Без мітки)</option>
+                      <option value="Хіт продажу">🔥 Хіт продажу</option>
+                      <option value="Акція">🏷️ Акція (-%)</option>
+                      <option value="Новинка">✨ Новинка</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Залишок (склад) *</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={pStock}
+                      onChange={(e) => setPStock(parseInt(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Ціна (грн) *</label>
+                    <input
+                      type="number"
+                      required
+                      step="0.1"
+                      min="0"
+                      value={pPrice}
+                      onChange={(e) => setPPrice(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Одиниця виміру</label>
+                    <select
+                      value={pUnit}
+                      onChange={(e) => setPUnit(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white"
+                    >
+                      <option value="грн/шт">грн/шт</option>
+                      <option value="грн/м">грн/м</option>
+                      <option value="грн/кг">грн/кг</option>
+                      <option value="грн/упак">грн/упак</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Product Image Selection: Upload from PC or URL */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="block font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-orange-600" />
+                      <span>Зображення товару</span>
+                    </label>
+                    
+                    <div className="flex items-center gap-1 bg-slate-200/70 p-1 rounded-xl text-[11px] font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setProductImageTab('upload')}
+                        className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                          productImageTab === 'upload'
+                            ? 'bg-white text-orange-600 shadow-xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>З комп'ютера (ПК)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProductImageTab('url')}
+                        className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                          productImageTab === 'url'
+                            ? 'bg-white text-orange-600 shadow-xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>URL / Посилання</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mode 1: Upload from local PC */}
+                  {productImageTab === 'upload' && (
+                    <div className="space-y-2">
+                      <label className="border-2 border-dashed border-orange-200 hover:border-orange-500 bg-white hover:bg-orange-50/20 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all group shadow-2xs">
+                        <input
+                          type="file"
+                          accept="image/png, image/jpeg, image/jpg, image/webp, image/gif, image/bmp"
+                          onChange={handleProductImageFileChange}
+                          disabled={isUploadingProductImage}
+                          className="hidden"
+                        />
+                        <div className="w-12 h-12 rounded-2xl bg-orange-100/70 text-orange-600 flex items-center justify-center mb-2 group-hover:scale-110 group-hover:bg-orange-600 group-hover:text-white transition-all shadow-2xs">
+                          {isUploadingProductImage ? (
+                            <RefreshCw className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Upload className="w-5 h-5" />
+                          )}
+                        </div>
+                        <p className="text-xs font-bold text-slate-800 text-center">
+                          {isUploadingProductImage ? 'Обробка та оптимізація фото...' : 'Оберіть фотографію товару з ПК'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 text-center mt-0.5">
+                          Натисніть для вибору файлу (PNG, JPG, WEBP) • Автоматично підв'язується до бази даних
+                        </p>
+                      </label>
+
+                      {productImageUploadError && (
+                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>{productImageUploadError}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mode 2: Input URL / Path directly */}
+                  {productImageTab === 'url' && (
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        value={pImage}
+                        onChange={(e) => setPImage(e.target.value)}
+                        placeholder="https://... або /src/assets/images/..."
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:border-orange-500 text-xs font-mono"
+                      />
+                      <p className="text-[11px] text-slate-500">
+                        Вставте пряме інтернет-посилання або шлях до внутрішнього зображення
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Live Image Preview Card */}
+                  {pImage && (
+                    <div className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                      <div className="w-14 h-14 rounded-xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200 flex items-center justify-center shadow-2xs">
+                        <img
+                          src={getSafeImageUrl(pImage)}
+                          alt="Попередній перегляд"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = '/src/assets/images/hero_iskra_store_1790671594961.jpg';
+                          }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-slate-900 truncate">
+                            {pImage.startsWith('data:') ? '💻 Фото завантажено з ПК' : '🔗 Посилання на фото'}
+                          </span>
+                          <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-md flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Підготовлено до збереження в БД</span>
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 truncate mt-0.5 font-mono">
+                          {pImage.startsWith('data:') ? `Оптимізований Base64 (довжина: ~${Math.round(pImage.length / 1024)} КБ)` : pImage}
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center gap-1 shrink-0">
+                        <label className="p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg cursor-pointer transition-colors" title="Завантажити інше фото">
+                          <Upload className="w-4 h-4" />
+                          <input
+                            type="file"
+                            accept="image/png, image/jpeg, image/jpg, image/webp, image/gif, image/bmp"
+                            onChange={handleProductImageFileChange}
+                            disabled={isUploadingProductImage}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setPImage('')}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="Очистити фото"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Опис товару</label>
+                  <textarea
+                    rows={2}
+                    value={pDesc}
+                    onChange={(e) => setPDesc(e.target.value)}
+                    placeholder="Матеріал, технічні особливості, призначення..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsProductModalOpen(false)}
+                    className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl font-semibold"
+                  >
+                    Скасувати
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl"
+                  >
+                    {editingProduct ? 'Зберегти зміни' : 'Створити товар'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

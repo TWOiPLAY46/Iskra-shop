@@ -1,0 +1,1429 @@
+import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react';
+import { initialCategoriesTree, initialHeaderDesign, initialProducts, initialSiteSettings, initialWeeklyDeal } from '../data/initialData';
+import { initialReviews } from '../data/productReviews';
+import { 
+  CartItem, 
+  CategoryTree, 
+  ClientData, 
+  FirebaseConnectionConfig, 
+  HeaderDesign, 
+  Order, 
+  OrderStatus, 
+  Product, 
+  ProductReview,
+  SiteFeatures, 
+  SiteSettings,
+  WeeklyDealConfig 
+} from '../types/store';
+import { 
+  defaultFirebaseConfig, 
+  getOrInitFirebase, 
+  testFirebaseConnection, 
+  pushStoreToFirebase, 
+  fetchStoreFromFirebase, 
+  subscribeToStore,
+  loginAdminWithFirebaseAuth,
+  registerAdminWithFirebaseAuth,
+  logoutAdminWithFirebaseAuth,
+  subscribeToAuth,
+  pushOrderToFirebase,
+  saveAdminPasswordToFirestore,
+  saveClientDirectlyToDatabase,
+  deleteClientFromDatabase,
+  saveReviewDirectlyToDatabase,
+  deleteReviewDirectlyFromDatabase,
+  saveProductDirectlyToDatabase,
+  deleteProductDirectlyFromDatabase
+} from '../services/firebaseService';
+import { 
+  recordSuccessfulLogin, 
+  clearSecureSession, 
+  verifySecureSession 
+} from '../services/adminSecurityService';
+
+interface StoreContextType {
+  products: Product[];
+  categoriesTree: CategoryTree;
+  cart: CartItem[];
+  wishlist: string[];
+  orders: Order[];
+  clients: Record<string, ClientData>;
+  siteSettings: SiteSettings;
+  headerDesign: HeaderDesign;
+  activeCategory: string;
+  setActiveCategory: (cat: string) => void;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  sortOption: 'default' | 'price-asc' | 'price-desc' | 'name-asc';
+  setSortOption: (sort: 'default' | 'price-asc' | 'price-desc' | 'name-asc') => void;
+  activeView: 'store' | 'account' | 'admin';
+  setActiveView: (view: 'store' | 'account' | 'admin') => void;
+  
+  // Modals & Panels
+  isCartDrawerOpen: boolean;
+  setIsCartDrawerOpen: (open: boolean) => void;
+  isCheckoutModalOpen: boolean;
+  setIsCheckoutModalOpen: (open: boolean) => void;
+  quickViewProduct: Product | null;
+  setQuickViewProduct: (p: Product | null) => void;
+  
+  // Cart & Pricing
+  addToCart: (product: Product, qty?: number) => void;
+  removeFromCart: (productId: string) => void;
+  updateCartQty: (productId: string, qty: number) => void;
+  clearCart: () => void;
+  totalCartSum: number;
+  discountedCartSum: number;
+  totalCartCount: number;
+
+  // Wishlist
+  showWishlistOnly: boolean;
+  setShowWishlistOnly: (show: boolean) => void;
+  toggleWishlist: (productId: string) => void;
+  isInWishlist: (productId: string) => boolean;
+
+  // Orders
+  placeOrder: (orderData: {
+    fio: string;
+    phone: string;
+    delivery: string;
+    city: string;
+    notes?: string;
+    paymentMethod?: 'cash_on_delivery' | 'card_online' | 'bank_invoice';
+  }) => Promise<Order>;
+  updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  updateOrderTtn: (orderId: string, ttn: string) => void;
+  editOrder: (orderId: string, updated: Partial<Order>) => void;
+  deleteOrder: (orderId: string) => void;
+  clearAllOrders: () => void;
+
+  // Products CRUD
+  saveProduct: (product: Product) => void;
+  deleteProduct: (productId: string) => void;
+  updateProductStock: (productId: string, newStock: number) => void;
+  updateProductPrice: (productId: string, newPrice: number) => void;
+  bulkAdjustPrices: (percentDelta: number) => void;
+  bulkAdjustStock: (newStockForAll: number) => void;
+  resetDefaultCatalog: () => void;
+  exportProductsCSV: () => string;
+  importProductsCSV: (csvText: string) => number;
+
+  // Category CRUD
+  addMainCategory: (name: string) => boolean;
+  deleteMainCategory: (name: string) => void;
+  addSubCategory: (mainCat: string, subName: string) => boolean;
+  deleteSubCategory: (mainCat: string, subName: string) => void;
+  addLeafCategory: (mainCat: string, subCat: string | null, leafName: string) => boolean;
+  deleteLeafCategory: (mainCat: string, subCat: string | null, leafName: string) => void;
+
+  // Client Loyalty
+  currentClientPhone: string | null;
+  currentClient: ClientData | null;
+  loginClient: (phone: string, name?: string) => void;
+  logoutClient: () => void;
+  saveClient: (phone: string, data: ClientData) => void;
+  deleteClient: (phone: string) => void;
+
+  // Customer Reviews
+  reviews: ProductReview[];
+  addReview: (review: Omit<ProductReview, 'id' | 'date' | 'helpfulCount'>) => ProductReview;
+  updateReview: (id: string, updated: Partial<ProductReview>) => void;
+  deleteReview: (id: string) => void;
+  voteHelpfulReview: (id: string) => void;
+  resetDefaultReviews: () => void;
+
+  // Site Settings & Features
+  updateSiteSettings: (settings: SiteSettings) => void;
+  updateSiteFeatures: (features: Partial<SiteFeatures>) => void;
+  updateHeaderDesign: (design: HeaderDesign) => void;
+  weeklyDeal: WeeklyDealConfig;
+  updateWeeklyDeal: (deal: Partial<WeeklyDealConfig>) => void;
+
+  // Database & Cloud Connection
+  firebaseConfig: FirebaseConnectionConfig;
+  updateFirebaseConfig: (config: FirebaseConnectionConfig) => void;
+  dbStatus: 'connected' | 'offline' | 'error' | 'syncing';
+  testDbConnection: () => Promise<{ success: boolean; message: string; pingMs?: number }>;
+  syncToCloud: () => Promise<boolean>;
+  fetchFromCloud: () => Promise<boolean>;
+  exportJsonBackup: () => string;
+  importJsonBackup: (jsonStr: string) => boolean;
+
+  // Admin Auth (Firebase Authentication)
+  isAdminLoggedIn: boolean;
+  adminUserEmail: string | null;
+  adminLogin: (emailOrPass: string, pass?: string) => Promise<{ success: boolean; error?: string }>;
+  adminRegister: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  adminLogout: () => void;
+
+  // Toast
+  toast: { message: string; type: 'success' | 'info' | 'error' } | null;
+  showToast: (message: string, type?: 'success' | 'info' | 'error') => void;
+}
+
+const StoreContext = createContext<StoreContextType | null>(null);
+
+export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Products
+  const [products, setProducts] = useState<Product[]>(() => {
+    const saved = localStorage.getItem('iskra_products_react_v3') || localStorage.getItem('iskra_products_react');
+    if (saved) {
+      try {
+        const parsed: Product[] = JSON.parse(saved);
+        // Merge in any newly defined initial products (like accessories) and image URLs
+        const merged = [...parsed];
+        initialProducts.forEach(initP => {
+          const idx = merged.findIndex(p => p.id === initP.id);
+          if (idx === -1) {
+            merged.push(initP);
+          } else {
+            if (!merged[idx].brand && initP.brand) {
+              merged[idx] = { ...merged[idx], brand: initP.brand };
+            }
+            if (!merged[idx].image && initP.image) {
+              merged[idx] = { ...merged[idx], image: initP.image };
+            }
+          }
+        });
+        // Ensure every product has a valid unique ID
+        return merged.map((p, idx) => ({
+          ...p,
+          id: p.id && String(p.id).trim() !== '' ? String(p.id).trim() : `prod-auto-${idx}`
+        }));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return initialProducts;
+  });
+
+  // Helper to normalize category tree structure
+  const normalizeCategoriesTree = (raw: any): CategoryTree => {
+    if (!raw || typeof raw !== 'object') return initialCategoriesTree;
+    const result: CategoryTree = {};
+    for (const [mainKey, mainVal] of Object.entries(raw)) {
+      if (!mainKey || mainKey.startsWith('_')) continue;
+      if (typeof mainVal !== 'object' || mainVal === null) {
+        result[mainKey] = { _leaves: [] };
+        continue;
+      }
+      const cleanMain: Record<string, string[]> = { _leaves: [] };
+      for (const [subKey, subVal] of Object.entries(mainVal as Record<string, any>)) {
+        if (subKey === '_exists' || subKey === '_created') continue;
+        if (subKey === '_leaves') {
+          cleanMain._leaves = Array.isArray(subVal) ? subVal.filter(Boolean) : [];
+        } else if (Array.isArray(subVal)) {
+          cleanMain[subKey] = subVal.filter(Boolean);
+        } else if (typeof subVal === 'object' && subVal !== null) {
+          cleanMain[subKey] = Object.values(subVal).filter(Boolean) as string[];
+        } else {
+          cleanMain[subKey] = [];
+        }
+      }
+      result[mainKey] = cleanMain;
+    }
+    return Object.keys(result).length > 0 ? result : initialCategoriesTree;
+  };
+
+  // Categories Tree
+  const [categoriesTree, setCategoriesTree] = useState<CategoryTree>(() => {
+    const saved = localStorage.getItem('iskra_categories_tree_react');
+    if (saved) {
+      try { return normalizeCategoriesTree(JSON.parse(saved)); } catch (e) { console.error(e); }
+    }
+    return initialCategoriesTree;
+  });
+
+  // Cart
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    const saved = localStorage.getItem('iskra_cart_react');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
+  // Wishlist
+  const [wishlist, setWishlist] = useState<string[]>(() => {
+    const saved = localStorage.getItem('iskra_wishlist_react');
+    if (saved) {
+      try { 
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(id => id && typeof id === 'string' && id.trim() !== '');
+        }
+      } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
+  const [showWishlistOnly, setShowWishlistOnly] = useState(false);
+
+  // Orders
+  const [orders, setOrders] = useState<Order[]>(() => {
+    const saved = localStorage.getItem('iskra_orders_react');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return [
+      {
+        id: "ORD-948120",
+        fio: "Олександр Коваленко",
+        phone: "+380971234567",
+        delivery: "Нова Пошта (м. Вінниця, Відділення №4)",
+        city: "Вінниця",
+        items: [
+          { name: "Змішувач для умивальника одноважільний латунь", qty: 1, price: 850, unit: "грн/шт", sku: "MIX-01-BR" },
+          { name: "Кабель силовий мідний ВВГ-п 3х1.5 негорючий (НГ)", qty: 50, price: 28.5, unit: "грн/м", sku: "CAB-315-NG" }
+        ],
+        total: 2275,
+        date: "28.09.2026, 14:32",
+        status: "Відправлено",
+        ttn: "20450892019482",
+        paymentMethod: "cash_on_delivery"
+      }
+    ];
+  });
+
+  // Clients
+  const [clients, setClients] = useState<Record<string, ClientData>>(() => {
+    const saved = localStorage.getItem('iskra_clients_react');
+    if (saved) {
+      try { 
+        return JSON.parse(saved);
+      } catch (e) { console.error(e); }
+    }
+    return {
+      "+380971234567": { name: "Олександр", balance: 150, discount: 5 },
+      "09753438988": { name: "Дмитро", balance: 250, discount: 3 }
+    };
+  });
+
+  // Customer Reviews (Synced to Firebase RTDB + Firestore)
+  const [reviews, setReviews] = useState<ProductReview[]>(() => {
+    const saved = localStorage.getItem('iskra_reviews_react');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return initialReviews;
+  });
+
+  // Client auth (check URL query ?client=09753438988 first)
+  const [currentClientPhone, setCurrentClientPhone] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlClient = urlParams.get('client');
+      if (urlClient) return urlClient;
+    }
+    return localStorage.getItem('iskra_current_client_phone') || "09753438988";
+  });
+
+  // Site Settings
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
+    const saved = localStorage.getItem('iskra_settings_react');
+    if (saved) {
+      try { 
+        const parsed = JSON.parse(saved); 
+        let city = parsed.city || initialSiteSettings.city;
+        if (city && city.includes('смт. Оратів')) {
+          city = city.replace(/смт\.\s*Оратів/g, 'с. Оратів');
+        }
+        return {
+          ...initialSiteSettings,
+          ...parsed,
+          city,
+          features: { ...initialSiteSettings.features, ...(parsed.features || {}) }
+        };
+      } catch (e) { console.error(e); }
+    }
+    return initialSiteSettings;
+  });
+
+  // Clean & Sanitize Header Design (prevents accidental hex strings like ffffffff in city/address fields)
+  const cleanHeaderDesign = (d: any): HeaderDesign => {
+    if (!d) return initialHeaderDesign;
+    const isGarbage = (v?: string) => !v || /^#?[fF0-9]{6,8}$/i.test(String(v).trim()) || /^f+$/i.test(String(v).trim());
+    let heroCity = isGarbage(d.heroCity) ? "с. Оратів, Вінницька обл." : String(d.heroCity).trim();
+    if (heroCity.includes('смт. Оратів') || heroCity.includes('смт.')) {
+      heroCity = heroCity.replace(/смт\.\s*Оратів/g, 'с. Оратів').replace(/смт\./g, 'с.');
+    }
+    return {
+      ...initialHeaderDesign,
+      ...d,
+      heroCity,
+      heroAddress: isGarbage(d.heroAddress) ? "вул. Героїв Майдану, 14" : d.heroAddress,
+      heroBadge: isGarbage(d.heroBadge) ? "Інтернет-магазин" : d.heroBadge
+    };
+  };
+
+  // Header Design
+  const [headerDesign, setHeaderDesign] = useState<HeaderDesign>(() => {
+    const saved = localStorage.getItem('iskra_design_react');
+    if (saved) {
+      try { 
+        const parsed = JSON.parse(saved);
+        return cleanHeaderDesign(parsed); 
+      } catch (e) { console.error(e); }
+    }
+    return initialHeaderDesign;
+  });
+
+  // Weekly Deal (Акція тижня)
+  const [weeklyDeal, setWeeklyDeal] = useState<WeeklyDealConfig>(() => {
+    const saved = localStorage.getItem('iskra_weekly_deal_react');
+    if (saved) {
+      try { return { ...initialWeeklyDeal, ...JSON.parse(saved) }; } catch (e) { console.error(e); }
+    }
+    return initialWeeklyDeal;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('iskra_weekly_deal_react', JSON.stringify(weeklyDeal));
+  }, [weeklyDeal]);
+
+  // Firebase Database Configuration
+  const [firebaseConfig, setFirebaseConfig] = useState<FirebaseConnectionConfig>(() => {
+    const saved = localStorage.getItem('iskra_firebase_config_react');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return defaultFirebaseConfig;
+  });
+
+  const [dbStatus, setDbStatus] = useState<'connected' | 'offline' | 'error' | 'syncing'>('offline');
+
+  // Admin Auth (Firebase Authentication & Secure Session)
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
+    const verified = verifySecureSession();
+    return verified.isValid;
+  });
+  const [adminUserEmail, setAdminUserEmail] = useState<string | null>(() => {
+    const verified = verifySecureSession();
+    return verified.email || sessionStorage.getItem('adminUserEmail') || null;
+  });
+
+  // Navigation & filters
+  const [activeView, setActiveView] = useState<'store' | 'account' | 'admin'>('store');
+  const [activeCategory, setActiveCategory] = useState<string>('Усі');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortOption, setSortOption] = useState<'default' | 'price-asc' | 'price-desc' | 'name-asc'>('default');
+
+  // Modals
+  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+
+  // Toast
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 3000);
+  };
+
+  // Sync to localStorage
+  useEffect(() => {
+    localStorage.setItem('iskra_products_react', JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('iskra_categories_tree_react', JSON.stringify(categoriesTree));
+  }, [categoriesTree]);
+
+  useEffect(() => {
+    localStorage.setItem('iskra_cart_react', JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
+    localStorage.setItem('iskra_wishlist_react', JSON.stringify(wishlist));
+  }, [wishlist]);
+
+  useEffect(() => {
+    localStorage.setItem('iskra_orders_react', JSON.stringify(orders));
+  }, [orders]);
+
+  useEffect(() => {
+    localStorage.setItem('iskra_clients_react', JSON.stringify(clients));
+  }, [clients]);
+
+  useEffect(() => {
+    localStorage.setItem('iskra_settings_react', JSON.stringify(siteSettings));
+  }, [siteSettings]);
+
+  useEffect(() => {
+    localStorage.setItem('iskra_design_react', JSON.stringify(headerDesign));
+  }, [headerDesign]);
+
+  useEffect(() => {
+    localStorage.setItem('iskra_firebase_config_react', JSON.stringify(firebaseConfig));
+  }, [firebaseConfig]);
+
+  // Live Firebase Realtime Sync Listener & Auto-Hydration
+  const isFirstLoad = useRef(true);
+  useEffect(() => {
+    if (!firebaseConfig.enabled) {
+      setDbStatus('offline');
+      return;
+    }
+
+    setDbStatus('syncing');
+
+    // On initial mount or config change, check cloud state:
+    // If cloud has catalog, hydrate from it. If cloud is empty, seed it with current store!
+    fetchStoreFromFirebase(firebaseConfig)
+      .then((cloudData) => {
+        if (cloudData && (cloudData.products?.length > 0 || cloudData.siteSettings || cloudData.reviews)) {
+          setDbStatus('connected');
+          if (cloudData.products && Array.isArray(cloudData.products)) setProducts(cloudData.products);
+          if (cloudData.categoriesTree) setCategoriesTree(normalizeCategoriesTree(cloudData.categoriesTree));
+          if (cloudData.orders && Array.isArray(cloudData.orders)) setOrders(cloudData.orders);
+          if (cloudData.clients && typeof cloudData.clients === 'object') setClients(cloudData.clients);
+          if (cloudData.reviews && Array.isArray(cloudData.reviews)) setReviews(cloudData.reviews);
+          if (cloudData.siteSettings) setSiteSettings((prev) => ({ ...prev, ...cloudData.siteSettings }));
+          if (cloudData.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...cloudData.headerDesign }));
+        } else if (isFirstLoad.current) {
+          isFirstLoad.current = false;
+          // Seed the database so Firebase console displays everything
+          pushStoreToFirebase(firebaseConfig, {
+            products,
+            categoriesTree,
+            orders,
+            clients,
+            reviews,
+            siteSettings,
+            headerDesign: cleanHeaderDesign(headerDesign),
+            lastSyncTimestamp: Date.now()
+          }).then((ok) => {
+            if (ok) setDbStatus('connected');
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {
+        testFirebaseConnection(firebaseConfig).then((res) => {
+          setDbStatus(res.success ? 'connected' : 'error');
+        });
+      });
+
+    const unsubscribe = subscribeToStore(firebaseConfig, (data) => {
+      if (data) {
+        setDbStatus('connected');
+        if (data.products && Array.isArray(data.products)) setProducts(data.products);
+        if (data.categoriesTree && typeof data.categoriesTree === 'object') setCategoriesTree(normalizeCategoriesTree(data.categoriesTree));
+        if (data.orders && Array.isArray(data.orders)) setOrders(data.orders);
+        if (data.clients && typeof data.clients === 'object') setClients(data.clients);
+        if (data.reviews && Array.isArray(data.reviews)) setReviews(data.reviews);
+        if (data.siteSettings) setSiteSettings((prev) => ({ ...prev, ...data.siteSettings }));
+        if (data.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...data.headerDesign }));
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [firebaseConfig]);
+
+  // Firebase Authentication Session Listener (onAuthStateChanged)
+  useEffect(() => {
+    if (!firebaseConfig.enabled) return;
+
+    const unsubscribeAuth = subscribeToAuth(firebaseConfig, (user) => {
+      if (user) {
+        setIsAdminLoggedIn(true);
+        setAdminUserEmail(user.email || null);
+        sessionStorage.setItem('isAdminLoggedIn', 'true');
+        if (user.email) sessionStorage.setItem('adminUserEmail', user.email);
+      } else {
+        setIsAdminLoggedIn(false);
+        setAdminUserEmail(null);
+        sessionStorage.removeItem('isAdminLoggedIn');
+        sessionStorage.removeItem('adminUserEmail');
+        sessionStorage.removeItem('iskra_admin_auth');
+      }
+    });
+
+    return () => {
+      if (unsubscribeAuth) unsubscribeAuth();
+    };
+  }, [firebaseConfig]);
+
+  // Database Actions
+  const updateFirebaseConfig = (newConfig: FirebaseConnectionConfig) => {
+    setFirebaseConfig(newConfig);
+    showToast('Параметри бази даних збережено', 'success');
+  };
+
+  const testDbConnection = async () => {
+    setDbStatus('syncing');
+    const result = await testFirebaseConnection(firebaseConfig);
+    setDbStatus(result.success ? 'connected' : 'error');
+    showToast(result.message, result.success ? 'success' : 'error');
+    return result;
+  };
+
+  const syncToCloud = async (): Promise<boolean> => {
+    setDbStatus('syncing');
+    const payload = {
+      products,
+      categoriesTree,
+      orders,
+      clients,
+      reviews,
+      siteSettings,
+      headerDesign,
+      lastSyncTimestamp: Date.now()
+    };
+    const success = await pushStoreToFirebase(firebaseConfig, payload);
+    setDbStatus(success ? 'connected' : 'error');
+    if (success) {
+      showToast('Всі дані сайту успішно вивантажено в хмарну базу даних!', 'success');
+    } else {
+      showToast('Помилка завантаження в базу даних. Перевірте з\'єднання', 'error');
+    }
+    return success;
+  };
+
+  const fetchFromCloud = async (): Promise<boolean> => {
+    setDbStatus('syncing');
+    const data = await fetchStoreFromFirebase(firebaseConfig);
+    if (data) {
+      setDbStatus('connected');
+      if (data.products && Array.isArray(data.products)) setProducts(data.products);
+      if (data.categoriesTree) setCategoriesTree(data.categoriesTree);
+      if (data.orders && Array.isArray(data.orders)) setOrders(data.orders);
+      if (data.clients) setClients(data.clients);
+      if (data.reviews && Array.isArray(data.reviews)) setReviews(data.reviews);
+      if (data.siteSettings) setSiteSettings((prev) => ({ ...prev, ...data.siteSettings }));
+      if (data.headerDesign) setHeaderDesign((prev) => ({ ...prev, ...data.headerDesign }));
+      showToast('Дані успішно завантажено з хмарної бази даних!', 'success');
+      return true;
+    } else {
+      setDbStatus('error');
+      showToast('Не вдалося отримати дані з хмари або база порожня', 'error');
+      return false;
+    }
+  };
+
+  const exportJsonBackup = (): string => {
+    const backup = {
+      version: "2.0",
+      exportDate: new Date().toISOString(),
+      products,
+      categoriesTree,
+      orders,
+      clients,
+      reviews,
+      siteSettings,
+      headerDesign,
+      firebaseConfig
+    };
+    return JSON.stringify(backup, null, 2);
+  };
+
+  const importJsonBackup = (jsonStr: string): boolean => {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.products && Array.isArray(parsed.products)) setProducts(parsed.products);
+      if (parsed.categoriesTree) setCategoriesTree(parsed.categoriesTree);
+      if (parsed.orders && Array.isArray(parsed.orders)) setOrders(parsed.orders);
+      if (parsed.clients) setClients(parsed.clients);
+      if (parsed.reviews && Array.isArray(parsed.reviews)) setReviews(parsed.reviews);
+      if (parsed.siteSettings) setSiteSettings(parsed.siteSettings);
+      if (parsed.headerDesign) setHeaderDesign(parsed.headerDesign);
+      if (parsed.firebaseConfig) setFirebaseConfig(parsed.firebaseConfig);
+      showToast('Резервну копію успішно відновлено!', 'success');
+      return true;
+    } catch (err) {
+      showToast('Невірний формат файлу резервної копії JSON', 'error');
+      return false;
+    }
+  };
+
+  const currentClient = useMemo(() => {
+    if (!currentClientPhone) return null;
+    const cleanCurrent = currentClientPhone.replace(/\D/g, '');
+    for (const key of Object.keys(clients)) {
+      if (key.replace(/\D/g, '') === cleanCurrent) {
+        return clients[key];
+      }
+    }
+    return null;
+  }, [currentClientPhone, clients]);
+
+  // Cart totals
+  const totalCartCount = useMemo(() => cart.reduce((acc, i) => acc + i.qty, 0), [cart]);
+  const totalCartSum = useMemo(() => cart.reduce((acc, i) => acc + (i.price * i.qty), 0), [cart]);
+  const discountedCartSum = useMemo(() => {
+    if (!currentClient || !currentClient.discount) return totalCartSum;
+    const mult = (100 - currentClient.discount) / 100;
+    return Math.round(totalCartSum * mult * 100) / 100;
+  }, [totalCartSum, currentClient]);
+
+  // Cart actions
+  const addToCart = (product: Product, qty: number = 1) => {
+    if (!siteSettings.features?.ordersEnabled) {
+      showToast('Оформлення замовлень тимчасово призупинено', 'info');
+      return;
+    }
+    setCart((prev) => {
+      const idx = prev.findIndex((i) => i.id === product.id || i.sku === product.sku);
+      if (idx > -1) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], qty: next[idx].qty + qty };
+        return next;
+      }
+      return [...prev, { ...product, qty }];
+    });
+    showToast(`Товар "${product.name}" додано до кошика!`, 'success');
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart((prev) => prev.filter((i) => i.id !== productId));
+  };
+
+  const updateCartQty = (productId: string, qty: number) => {
+    if (qty <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+    setCart((prev) => prev.map((i) => (i.id === productId ? { ...i, qty } : i)));
+  };
+
+  const clearCart = () => setCart([]);
+
+  // Wishlist
+  const toggleWishlist = (productId: string) => {
+    if (!productId || typeof productId !== 'string') return;
+    const cleanId = productId.trim();
+    if (!cleanId) return;
+
+    setWishlist((prev) => {
+      const currentList = Array.isArray(prev) ? prev.filter((id) => typeof id === 'string' && id.trim() !== '') : [];
+      if (currentList.includes(cleanId)) {
+        showToast('Видалено з обраного', 'info');
+        return currentList.filter((id) => id !== cleanId);
+      }
+      showToast('Додано до обраного', 'success');
+      return [...currentList, cleanId];
+    });
+  };
+
+  const isInWishlist = (productId: string): boolean => {
+    if (!productId || typeof productId !== 'string') return false;
+    const cleanId = productId.trim();
+    if (!cleanId) return false;
+    return Array.isArray(wishlist) && wishlist.includes(cleanId);
+  };
+
+  // Orders
+  const placeOrder = async (orderData: {
+    fio: string;
+    phone: string;
+    delivery: string;
+    city: string;
+    notes?: string;
+    paymentMethod?: 'cash_on_delivery' | 'card_online' | 'bank_invoice';
+  }): Promise<Order> => {
+    const orderId = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
+    const newOrder: Order = {
+      id: orderId,
+      fio: orderData.fio,
+      phone: orderData.phone,
+      delivery: orderData.delivery,
+      city: orderData.city || 'с. Оратів',
+      items: cart.map((i) => ({
+        name: i.name,
+        qty: i.qty,
+        price: i.price,
+        unit: i.unit,
+        sku: i.sku,
+        image: i.image
+      })),
+      total: discountedCartSum,
+      date: new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }),
+      status: 'Створено',
+      paymentMethod: orderData.paymentMethod || 'cash_on_delivery',
+      notes: orderData.notes
+    };
+
+    const nextOrders = [newOrder, ...orders];
+    setOrders(nextOrders);
+
+    // Deduct stock
+    const nextProducts = products.map((p) => {
+      const foundInCart = cart.find((c) => c.id === p.id || c.sku === p.sku);
+      if (foundInCart) {
+        return { ...p, stock: Math.max(0, p.stock - foundInCart.qty) };
+      }
+      return p;
+    });
+    setProducts(nextProducts);
+
+    // Auto-create / update client profile and bonus points
+    const cleanPhone = orderData.phone.trim();
+    const bonusEarned = Math.round(discountedCartSum * 0.02); // 2% cashback bonus
+    const existing = clients[cleanPhone];
+    const nextClients = {
+      ...clients,
+      [cleanPhone]: {
+        name: existing?.name || orderData.fio,
+        balance: (existing?.balance || 0) + bonusEarned,
+        discount: existing?.discount || 0
+      }
+    };
+    setClients(nextClients);
+
+    // Sync to Cloud if Firebase is active
+    if (firebaseConfig.enabled) {
+      pushOrderToFirebase(firebaseConfig, newOrder).catch(() => {});
+      pushStoreToFirebase(firebaseConfig, {
+        products: nextProducts,
+        categoriesTree,
+        orders: nextOrders,
+        clients: nextClients,
+        siteSettings,
+        headerDesign,
+        lastSyncTimestamp: Date.now()
+      }).catch(err => console.warn("Firebase sync error on order:", err));
+    }
+
+    // Telegram Bot notification
+    if (siteSettings.botToken && siteSettings.chatId) {
+      try {
+        const itemsList = cart
+          .map((i) => `• ${i.name} — ${i.qty} шт. (${i.price} грн/${i.unit.replace('грн/', '')})`)
+          .join('\n');
+        const tgMsg =
+          `⚡ *Нове замовлення №${orderId} на сайті ISKRA*\n\n` +
+          `👤 *Клієнт:* ${orderData.fio}\n` +
+          `📞 *Телефон:* ${orderData.phone}\n` +
+          `🚚 *Доставка:* ${orderData.delivery}\n` +
+          `💳 *Оплата:* ${orderData.paymentMethod || 'При отриманні'}\n` +
+          `💰 *Сума до сплати:* ${discountedCartSum.toFixed(2)} грн\n\n` +
+          `📦 *Товари:*\n${itemsList}` +
+          (orderData.notes ? `\n\n📝 *Коментар:* ${orderData.notes}` : '');
+
+        fetch(`https://api.telegram.org/bot${siteSettings.botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: siteSettings.chatId,
+            text: tgMsg,
+            parse_mode: 'Markdown'
+          })
+        }).catch((err) => console.warn('Telegram notify error:', err));
+      } catch (err) {
+        console.warn('Could not dispatch Telegram alert:', err);
+      }
+    }
+
+    clearCart();
+    return newOrder;
+  };
+
+  const updateOrderStatus = (orderId: string, status: OrderStatus) => {
+    const next = orders.map((o) => (o.id === orderId ? { ...o, status } : o));
+    setOrders(next);
+    showToast(`Статус замовлення №${orderId} змінено на "${status}"`, 'info');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const updateOrderTtn = (orderId: string, ttn: string) => {
+    const next = orders.map((o) => (o.id === orderId ? { ...o, ttn, status: ttn ? 'Відправлено' : o.status } : o));
+    setOrders(next);
+    showToast(`ТТН для замовлення №${orderId} збережено!`, 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const editOrder = (orderId: string, updated: Partial<Order>) => {
+    const next = orders.map((o) => (o.id === orderId ? { ...o, ...updated } : o));
+    setOrders(next);
+    showToast(`Замовлення №${orderId} оновлено`, 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const deleteOrder = (orderId: string) => {
+    const next = orders.filter((o) => o.id !== orderId);
+    setOrders(next);
+    showToast(`Замовлення видалено`, 'info');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const clearAllOrders = () => {
+    setOrders([]);
+    showToast('Усі замовлення очищено', 'info');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { orders: [], lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  // Products CRUD
+  const saveProduct = (product: Product) => {
+    let next: Product[];
+    const idx = products.findIndex((p) => p.id === product.id);
+    if (idx > -1) {
+      next = [...products];
+      next[idx] = product;
+    } else {
+      next = [product, ...products];
+    }
+    setProducts(next);
+    showToast(`Товар "${product.name}" збережено!`, 'success');
+    if (firebaseConfig.enabled) {
+      saveProductDirectlyToDatabase(firebaseConfig, product);
+      pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const deleteProduct = (productId: string) => {
+    const next = products.filter((p) => p.id !== productId);
+    setProducts(next);
+    showToast('Товар видалено з каталогу', 'info');
+    if (firebaseConfig.enabled) {
+      deleteProductDirectlyFromDatabase(firebaseConfig, productId);
+      pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const updateProductStock = (productId: string, newStock: number) => {
+    const next = products.map((p) => (p.id === productId ? { ...p, stock: Math.max(0, newStock) } : p));
+    setProducts(next);
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const updateProductPrice = (productId: string, newPrice: number) => {
+    const next = products.map((p) => (p.id === productId ? { ...p, price: Math.max(0, newPrice) } : p));
+    setProducts(next);
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const bulkAdjustPrices = (percentDelta: number) => {
+    const factor = 1 + (percentDelta / 100);
+    const next = products.map((p) => ({
+      ...p,
+      price: Math.max(1, Math.round(p.price * factor * 10) / 10)
+    }));
+    setProducts(next);
+    showToast(`Ціни всіх товарів змінено на ${percentDelta > 0 ? '+' : ''}${percentDelta}%`, 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const bulkAdjustStock = (newStockForAll: number) => {
+    const next = products.map((p) => ({ ...p, stock: Math.max(0, newStockForAll) }));
+    setProducts(next);
+    showToast(`Залишки всіх товарів встановлено на ${newStockForAll}`, 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const resetDefaultCatalog = () => {
+    setProducts(initialProducts);
+    setCategoriesTree(initialCategoriesTree);
+    showToast('Каталог скинуто до початкових товарів', 'info');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { 
+        products: initialProducts, 
+        categoriesTree: initialCategoriesTree,
+        lastSyncTimestamp: Date.now() 
+      });
+    }
+  };
+
+  const exportProductsCSV = (): string => {
+    let csv = '\uFEFFID,Name,Category,Badge,SKU,Stock,Price,Unit,Description,Image\n';
+    products.forEach((p) => {
+      csv += `"${p.id}","${p.name.replace(/"/g, '""')}","${p.category.replace(/"/g, '""')}","${p.badge}","${p.sku}",${p.stock},${p.price},"${p.unit}","${p.desc.replace(/"/g, '""')}","${p.image}"\n`;
+    });
+    return csv;
+  };
+
+  const importProductsCSV = (csvText: string): number => {
+    const lines = csvText.split('\n');
+    let imported = 0;
+    const newItems: Product[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const row: string[] = [];
+      let inQ = false;
+      let cur = '';
+
+      for (let c of line) {
+        if (c === '"') inQ = !inQ;
+        else if (c === ',' && !inQ) {
+          row.push(cur.trim());
+          cur = '';
+        } else {
+          cur += c;
+        }
+      }
+      row.push(cur.trim());
+
+      if (row.length >= 6 && row[1]) {
+        const id = row[0] || 'prod-' + Date.now() + '-' + i;
+        const name = row[1].replace(/^"|"$/g, '');
+        const category = row[2] ? row[2].replace(/^"|"$/g, '') : 'Інше';
+        const badge = (row[3] ? row[3].replace(/^"|"$/g, '') : '') as any;
+        const sku = row[4] ? row[4].replace(/^"|"$/g, '') : 'SKU-' + i;
+        const stock = parseInt(row[5]) || 10;
+        const price = parseFloat(row[6]) || 0;
+        const unit = row[7] ? row[7].replace(/^"|"$/g, '') : 'грн/шт';
+        const desc = row[8] ? row[8].replace(/^"|"$/g, '') : '';
+        const image = row[9] ? row[9].replace(/^"|"$/g, '') : '/src/assets/images/hero_iskra_store_1790671594961.jpg';
+
+        newItems.push({ id, name, category, badge, sku, stock, price, unit, desc, image });
+        imported++;
+      }
+    }
+
+    if (newItems.length > 0) {
+      const next = [...newItems, ...products];
+      setProducts(next);
+      showToast(`Успішно імпортовано ${imported} товарів`, 'success');
+      if (firebaseConfig.enabled) {
+        pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+      }
+    }
+    return imported;
+  };
+
+  // Categories CRUD
+  const addMainCategory = (name: string): boolean => {
+    const clean = name.trim();
+    if (!clean || categoriesTree[clean]) return false;
+    const next = { ...categoriesTree, [clean]: { _leaves: [] } };
+    setCategoriesTree(next);
+    showToast(`Головну категорію "${clean}" створено`, 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { categoriesTree: next, lastSyncTimestamp: Date.now() });
+    }
+    return true;
+  };
+
+  const deleteMainCategory = (name: string) => {
+    const next = { ...categoriesTree };
+    delete next[name];
+    setCategoriesTree(next);
+    showToast(`Головну категорію видалено`, 'info');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { categoriesTree: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const addSubCategory = (mainCat: string, subName: string): boolean => {
+    const clean = subName.trim();
+    if (!clean || !categoriesTree[mainCat] || categoriesTree[mainCat][clean]) return false;
+    const next = {
+      ...categoriesTree,
+      [mainCat]: { ...categoriesTree[mainCat], [clean]: [] }
+    };
+    setCategoriesTree(next);
+    showToast(`Підкатегорію "${clean}" додано`, 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { categoriesTree: next, lastSyncTimestamp: Date.now() });
+    }
+    return true;
+  };
+
+  const deleteSubCategory = (mainCat: string, subName: string) => {
+    const next = { ...categoriesTree };
+    if (next[mainCat]) {
+      const subCopy = { ...next[mainCat] };
+      delete subCopy[subName];
+      next[mainCat] = subCopy;
+    }
+    setCategoriesTree(next);
+    showToast(`Підкатегорію видалено`, 'info');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { categoriesTree: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const addLeafCategory = (mainCat: string, subCat: string | null, leafName: string): boolean => {
+    const clean = leafName.trim();
+    if (!clean || !categoriesTree[mainCat]) return false;
+
+    const next = { ...categoriesTree };
+    const mainObj = { ...next[mainCat] };
+
+    if (!subCat || subCat === '__direct__') {
+      const leaves = mainObj._leaves ? [...mainObj._leaves] : [];
+      if (!leaves.includes(clean)) leaves.push(clean);
+      mainObj._leaves = leaves;
+    } else {
+      const currentSub = Array.isArray(mainObj[subCat]) ? [...mainObj[subCat]] : [];
+      if (!currentSub.includes(clean)) currentSub.push(clean);
+      mainObj[subCat] = currentSub;
+    }
+    next[mainCat] = mainObj;
+    setCategoriesTree(next);
+    showToast(`Кінцеву категорію "${clean}" додано`, 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { categoriesTree: next, lastSyncTimestamp: Date.now() });
+    }
+    return true;
+  };
+
+  const deleteLeafCategory = (mainCat: string, subCat: string | null, leafName: string) => {
+    const next = { ...categoriesTree };
+    if (!next[mainCat]) return;
+    const mainObj = { ...next[mainCat] };
+
+    if (!subCat || subCat === '__direct__') {
+      mainObj._leaves = (mainObj._leaves || []).filter((l: string) => l !== leafName);
+    } else if (Array.isArray(mainObj[subCat])) {
+      mainObj[subCat] = mainObj[subCat].filter((l: string) => l !== leafName);
+    }
+    next[mainCat] = mainObj;
+    setCategoriesTree(next);
+    showToast(`Категорію видалено`, 'info');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { categoriesTree: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  // Client loyalty & database sync
+  const loginClient = (phone: string, name?: string) => {
+    const cleanPhone = phone.trim();
+    localStorage.setItem('iskra_current_client_phone', cleanPhone);
+    setCurrentClientPhone(cleanPhone);
+
+    const nextClients = { ...clients };
+    if (!nextClients[cleanPhone]) {
+      const newClientData: ClientData = {
+        name: name || 'Покупець',
+        balance: 0,
+        discount: 3
+      };
+      nextClients[cleanPhone] = newClientData;
+      setClients(nextClients);
+      saveClientDirectlyToDatabase(firebaseConfig, cleanPhone, newClientData).catch(() => {});
+      if (firebaseConfig.enabled) {
+        pushStoreToFirebase(firebaseConfig, { clients: nextClients, lastSyncTimestamp: Date.now() });
+      }
+    }
+    showToast(`Вітаємо в особистому кабінеті!`, 'success');
+  };
+
+  const logoutClient = () => {
+    localStorage.removeItem('iskra_current_client_phone');
+    setCurrentClientPhone(null);
+    showToast('Ви вийшли з кабінету', 'info');
+  };
+
+  const saveClient = (phone: string, data: ClientData) => {
+    const cleanPhone = phone.trim();
+    const next = { ...clients, [cleanPhone]: data };
+    setClients(next);
+    localStorage.setItem('iskra_clients_react', JSON.stringify(next));
+    showToast(`Дані клієнта ${cleanPhone} збережено в базі даних`, 'success');
+    saveClientDirectlyToDatabase(firebaseConfig, cleanPhone, data).catch(() => {});
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { clients: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const deleteClient = (phone: string) => {
+    const cleanPhone = phone.trim();
+    const next = { ...clients };
+    delete next[cleanPhone];
+    setClients(next);
+    localStorage.setItem('iskra_clients_react', JSON.stringify(next));
+    if (currentClientPhone === cleanPhone) {
+      setCurrentClientPhone(null);
+      localStorage.removeItem('iskra_current_client_phone');
+    }
+    showToast(`Клієнта видалено з бази даних`, 'info');
+    deleteClientFromDatabase(firebaseConfig, cleanPhone).catch(() => {});
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { clients: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  // Customer Reviews CRUD & DB Persistence
+  const addReview = (reviewData: Omit<ProductReview, 'id' | 'date' | 'helpfulCount'>): ProductReview => {
+    const newRev: ProductReview = {
+      ...reviewData,
+      id: `rev-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      date: 'Щойно',
+      helpfulCount: 0
+    };
+    const next = [newRev, ...reviews];
+    setReviews(next);
+    localStorage.setItem('iskra_reviews_react', JSON.stringify(next));
+    showToast('Відгук додано та збережено в базі!', 'success');
+    saveReviewDirectlyToDatabase(firebaseConfig, newRev).catch(() => {});
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { reviews: next, lastSyncTimestamp: Date.now() });
+    }
+    return newRev;
+  };
+
+  const updateReview = (id: string, updated: Partial<ProductReview>) => {
+    const next = reviews.map(r => r.id === id ? { ...r, ...updated } : r);
+    setReviews(next);
+    localStorage.setItem('iskra_reviews_react', JSON.stringify(next));
+    const targetRev = next.find(r => r.id === id);
+    if (targetRev) {
+      saveReviewDirectlyToDatabase(firebaseConfig, targetRev).catch(() => {});
+    }
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { reviews: next, lastSyncTimestamp: Date.now() });
+    }
+    showToast('Відгук успішно оновлено в базі даних', 'success');
+  };
+
+  const deleteReview = (id: string) => {
+    const next = reviews.filter(r => r.id !== id);
+    setReviews(next);
+    localStorage.setItem('iskra_reviews_react', JSON.stringify(next));
+    deleteReviewDirectlyFromDatabase(firebaseConfig, id).catch(() => {});
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { reviews: next, lastSyncTimestamp: Date.now() });
+    }
+    showToast('Відгук видалено з бази даних', 'info');
+  };
+
+  const voteHelpfulReview = (id: string) => {
+    const next = reviews.map(r => r.id === id ? { ...r, helpfulCount: (r.helpfulCount || 0) + 1 } : r);
+    setReviews(next);
+    localStorage.setItem('iskra_reviews_react', JSON.stringify(next));
+    const targetRev = next.find(r => r.id === id);
+    if (targetRev) {
+      saveReviewDirectlyToDatabase(firebaseConfig, targetRev).catch(() => {});
+    }
+    showToast('Дякуємо за оцінку відгуку!', 'success');
+  };
+
+  const resetDefaultReviews = () => {
+    setReviews(initialReviews);
+    localStorage.setItem('iskra_reviews_react', JSON.stringify(initialReviews));
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { reviews: initialReviews, lastSyncTimestamp: Date.now() });
+    }
+    showToast('Відновлено стандартний список відгуків', 'info');
+  };
+
+  // Site Settings
+  const updateSiteSettings = (settings: SiteSettings) => {
+    setSiteSettings(settings);
+    showToast('Контактні дані та параметри збережено', 'success');
+    if (settings.adminPassword) {
+      saveAdminPasswordToFirestore(firebaseConfig, settings.adminPassword).catch(() => {});
+    }
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { siteSettings: settings, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const updateSiteFeatures = (features: Partial<SiteFeatures>) => {
+    const next = {
+      ...siteSettings,
+      features: { ...siteSettings.features, ...features }
+    };
+    setSiteSettings(next);
+    showToast('Модулі та функціонал сайту оновлено', 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { siteSettings: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const updateHeaderDesign = (design: HeaderDesign) => {
+    const cleaned = cleanHeaderDesign(design);
+    setHeaderDesign(cleaned);
+    showToast('Налаштування дизайну та акції оновлено', 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { headerDesign: cleaned, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const updateWeeklyDeal = (dealUpdate: Partial<WeeklyDealConfig>) => {
+    setWeeklyDeal(prev => {
+      const next = { ...prev, ...dealUpdate };
+      localStorage.setItem('iskra_weekly_deal_react', JSON.stringify(next));
+      if (firebaseConfig.enabled) {
+        pushStoreToFirebase(firebaseConfig, { weeklyDeal: next, lastSyncTimestamp: Date.now() });
+      }
+      return next;
+    });
+    showToast('Налаштування «Акції тижня» оновлено!', 'success');
+  };
+
+  // Admin Auth via Firebase Authentication (signInWithEmailAndPassword)
+  const adminLogin = async (emailOrPass: string, pass?: string): Promise<{ success: boolean; error?: string }> => {
+    // If only one argument was provided, treat it as password with the default admin email
+    const email = pass !== undefined ? emailOrPass : 'lenovoB777e@gmail.com';
+    const password = pass !== undefined ? pass : emailOrPass;
+
+    try {
+      const res = await loginAdminWithFirebaseAuth(firebaseConfig, email, password);
+      if (res.success && res.user) {
+        setIsAdminLoggedIn(true);
+        setAdminUserEmail(res.user.email || email);
+        recordSuccessfulLogin(res.user.email || email);
+        showToast('Успішний захищений вхід в панель керування!', 'success');
+        return { success: true };
+      }
+      const errMsg = res.error || 'Невірний email або пароль адміністратора';
+      showToast(errMsg, 'error');
+      return { success: false, error: errMsg };
+    } catch (err: any) {
+      const errMsg = err.message || 'Помилка авторизації Firebase Auth';
+      showToast(errMsg, 'error');
+      return { success: false, error: errMsg };
+    }
+  };
+
+  const adminRegister = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await registerAdminWithFirebaseAuth(firebaseConfig, email, password);
+      if (res.success && res.user) {
+        setIsAdminLoggedIn(true);
+        setAdminUserEmail(res.user.email || email);
+        recordSuccessfulLogin(res.user.email || email);
+        showToast('Адміністратора успішно зареєстровано в Firebase Auth!', 'success');
+        return { success: true };
+      }
+      const errMsg = res.error || 'Помилка реєстрації';
+      showToast(errMsg, 'error');
+      return { success: false, error: errMsg };
+    } catch (err: any) {
+      const errMsg = err.message || 'Помилка створення облікового запису';
+      showToast(errMsg, 'error');
+      return { success: false, error: errMsg };
+    }
+  };
+
+  const adminLogout = () => {
+    logoutAdminWithFirebaseAuth(firebaseConfig).catch(() => {});
+    clearSecureSession();
+    setIsAdminLoggedIn(false);
+    setAdminUserEmail(null);
+    showToast('Вихід з адмін-панелі виконано', 'info');
+  };
+
+  return (
+    <StoreContext.Provider
+      value={{
+        products,
+        categoriesTree,
+        cart,
+        wishlist,
+        orders,
+        clients,
+        siteSettings,
+        headerDesign,
+        activeCategory,
+        setActiveCategory,
+        searchQuery,
+        setSearchQuery,
+        sortOption,
+        setSortOption,
+        activeView,
+        setActiveView,
+        isCartDrawerOpen,
+        setIsCartDrawerOpen,
+        isCheckoutModalOpen,
+        setIsCheckoutModalOpen,
+        quickViewProduct,
+        setQuickViewProduct,
+        addToCart,
+        removeFromCart,
+        updateCartQty,
+        clearCart,
+        totalCartSum,
+        discountedCartSum,
+        totalCartCount,
+        showWishlistOnly,
+        setShowWishlistOnly,
+        toggleWishlist,
+        isInWishlist,
+        placeOrder,
+        updateOrderStatus,
+        updateOrderTtn,
+        editOrder,
+        deleteOrder,
+        clearAllOrders,
+        saveProduct,
+        deleteProduct,
+        updateProductStock,
+        updateProductPrice,
+        bulkAdjustPrices,
+        bulkAdjustStock,
+        resetDefaultCatalog,
+        exportProductsCSV,
+        importProductsCSV,
+        addMainCategory,
+        deleteMainCategory,
+        addSubCategory,
+        deleteSubCategory,
+        addLeafCategory,
+        deleteLeafCategory,
+        currentClientPhone,
+        currentClient,
+        loginClient,
+        logoutClient,
+        saveClient,
+        deleteClient,
+        reviews,
+        addReview,
+        updateReview,
+        deleteReview,
+        voteHelpfulReview,
+        resetDefaultReviews,
+        updateSiteSettings,
+        updateSiteFeatures,
+        updateHeaderDesign,
+        weeklyDeal,
+        updateWeeklyDeal,
+        firebaseConfig,
+        updateFirebaseConfig,
+        dbStatus,
+        testDbConnection,
+        syncToCloud,
+        fetchFromCloud,
+        exportJsonBackup,
+        importJsonBackup,
+        isAdminLoggedIn,
+        adminUserEmail,
+        adminLogin,
+        adminRegister,
+        adminLogout,
+        toast,
+        showToast
+      }}
+    >
+      {children}
+    </StoreContext.Provider>
+  );
+};
+
+export const useStore = () => {
+  const context = useContext(StoreContext);
+  if (!context) {
+    throw new Error('useStore must be used within a StoreProvider');
+  }
+  return context;
+};
