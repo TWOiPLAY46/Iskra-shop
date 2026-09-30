@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { getSafeImageUrl } from '../utils/assetImages';
 import { 
@@ -64,7 +64,21 @@ export const AccountView: React.FC = () => {
   const [phoneError, setPhoneError] = useState<string | null>(null);
 
   // Active view tab in account
-  const [activeTab, setActiveTab] = useState<'orders' | 'track' | 'loyalty'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'track' | 'loyalty'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('iskra_account_tab');
+      if (saved === 'orders' || saved === 'track' || saved === 'loyalty') {
+        return saved;
+      }
+    }
+    return 'orders';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('iskra_account_tab', activeTab);
+    }
+  }, [activeTab]);
 
   // Search & Filter in Orders list
   const [orderSearchQuery, setOrderSearchQuery] = useState('');

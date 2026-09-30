@@ -257,7 +257,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return [];
   });
 
-  const [showWishlistOnly, setShowWishlistOnly] = useState(false);
+  const [showWishlistOnly, setShowWishlistOnly] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '');
+      if (hash === 'wishlist' || hash === 'favorites') return true;
+      const saved = localStorage.getItem('iskra_show_wishlist');
+      if (saved === 'true') return true;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('iskra_show_wishlist', String(showWishlistOnly));
+      if (showWishlistOnly) {
+        window.location.hash = 'wishlist';
+      }
+    }
+  }, [showWishlistOnly]);
 
   // Orders
   const [orders, setOrders] = useState<Order[]>(() => {
@@ -412,6 +429,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (hash === 'admin' || hash === 'account' || hash === 'store') {
         return hash;
       }
+      if (hash === 'wishlist' || hash === 'favorites') {
+        return 'store';
+      }
       const saved = localStorage.getItem('iskra_active_view');
       if (saved === 'admin' || saved === 'account' || saved === 'store') {
         return saved;
@@ -424,25 +444,33 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (typeof window !== 'undefined') {
       localStorage.setItem('iskra_active_view', activeView);
       if (activeView === 'store') {
-        if (window.location.hash) {
-          window.history.replaceState(null, '', window.location.pathname);
+        if (!showWishlistOnly) {
+          if (window.location.hash && window.location.hash !== '#wishlist' && window.location.hash !== '#favorites') {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        } else {
+          window.location.hash = 'wishlist';
         }
       } else {
         window.location.hash = activeView;
       }
     }
-  }, [activeView]);
+  }, [activeView, showWishlistOnly]);
 
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
       if (hash === 'admin' || hash === 'account' || hash === 'store') {
         setActiveView(hash);
+        if (hash !== 'store') setShowWishlistOnly(false);
+      } else if (hash === 'wishlist' || hash === 'favorites') {
+        setActiveView('store');
+        setShowWishlistOnly(true);
       }
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [showWishlistOnly]);
 
   const [activeCategory, setActiveCategory] = useState<string>('Усі');
   const [searchQuery, setSearchQuery] = useState<string>('');

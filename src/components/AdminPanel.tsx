@@ -598,7 +598,22 @@ export const AdminPanel: React.FC = () => {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [activeTab, setActiveTab] = useState<
     'products' | 'weekly_deal' | 'categories' | 'orders' | 'reviews' | 'clients' | 'analytics' | 'features' | 'database' | 'design' | 'settings'
-  >('products');
+  >(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('iskra_admin_tab');
+      const validTabs = ['products', 'weekly_deal', 'categories', 'orders', 'reviews', 'clients', 'analytics', 'features', 'database', 'design', 'settings'];
+      if (saved && validTabs.includes(saved)) {
+        return saved as any;
+      }
+    }
+    return 'products';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('iskra_admin_tab', activeTab);
+    }
+  }, [activeTab]);
 
   // Search & Filter states
   const [productSearch, setProductSearch] = useState('');
