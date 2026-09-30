@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Product } from '../types/store';
 import { getSafeImageUrl } from '../utils/assetImages';
+import { getSmartRecommendedProducts } from '../utils/recommendationsHelper';
 
 export const CartDrawer: React.FC = () => {
   const { 
@@ -36,40 +37,11 @@ export const CartDrawer: React.FC = () => {
 
   const discountAmount = totalCartSum - discountedCartSum;
 
-  // Determine if cart contains plumbing or electrical goods
-  const cartHasPlumbing = useMemo(() => {
-    return cart.some((item) => {
-      const cat = (item.category + ' ' + (item.mainCategory || '')).toLowerCase();
-      return cat.includes('сантех') || cat.includes('змішувач') || cat.includes('радіатор') || cat.includes('труб');
-    });
-  }, [cart]);
-
   // Items not already in cart for "З цим часто купують"
   const frequentlyBoughtTogether = useMemo(() => {
-    const candidateItems = products.filter((p) => !cart.some((c) => c.id === p.id));
-    
-    // Sort so high-utility accessories come first based on cart content
-    const priorityItems = candidateItems.filter((p) => {
-      if (cartHasPlumbing) {
-        return (
-          p.id === 'prod-fum-12' ||
-          p.id === 'prod-hose-50' ||
-          p.id === 'prod-fit-20' ||
-          p.category?.toLowerCase().includes('комплект')
-        );
-      } else {
-        return (
-          p.id === 'prod-izo-tape' ||
-          p.id === 'prod-wago-221' ||
-          p.id === 'prod-avt-16' ||
-          p.category?.toLowerCase().includes('монтаж')
-        );
-      }
-    });
-
-    const rest = candidateItems.filter((p) => !priorityItems.some((pr) => pr.id === p.id));
-    return [...priorityItems, ...rest].slice(0, 4);
-  }, [cart, products, cartHasPlumbing]);
+    if (!cart.length) return [];
+    return getSmartRecommendedProducts(cart, products, 4);
+  }, [cart, products]);
 
   if (!isCartDrawerOpen) return null;
 

@@ -17,6 +17,7 @@ import { Product } from '../types/store';
 import { getProductBrand } from '../utils/brandHelper';
 import { getSafeImageUrl } from '../utils/assetImages';
 import { ProductReviewsSection } from './ProductReviewsSection';
+import { getSmartRecommendedProducts } from '../utils/recommendationsHelper';
 
 export const ProductDetailModal: React.FC = () => {
   const { 
@@ -50,36 +51,8 @@ export const ProductDetailModal: React.FC = () => {
   // Smart related cross-sell accessories ("З цим часто купують")
   const frequentlyBoughtTogether = useMemo(() => {
     if (!quickViewProduct) return [];
-
-    const otherProds = products.filter((p) => p.id !== quickViewProduct.id);
-
-    // Prefer complementary accessories matching plumbing or electrical
-    const matchingAccessories = otherProds.filter((p) => {
-      const pCat = (p.category + ' ' + (p.mainCategory || '')).toLowerCase();
-      if (isPlumbing) {
-        return (
-          p.id === 'prod-fum-12' ||
-          p.id === 'prod-hose-50' ||
-          p.id === 'prod-fit-20' ||
-          pCat.includes('сантех') ||
-          pCat.includes('змішувач') ||
-          pCat.includes('комплект')
-        );
-      } else {
-        return (
-          p.id === 'prod-izo-tape' ||
-          p.id === 'prod-wago-221' ||
-          p.id === 'prod-avt-16' ||
-          pCat.includes('електро') ||
-          pCat.includes('кабель') ||
-          pCat.includes('монтаж')
-        );
-      }
-    });
-
-    const fallback = otherProds.filter((p) => !matchingAccessories.some((m) => m.id === p.id));
-    return [...matchingAccessories, ...fallback].slice(0, 4);
-  }, [quickViewProduct, products, isPlumbing]);
+    return getSmartRecommendedProducts(quickViewProduct, products, 4);
+  }, [quickViewProduct, products]);
 
   if (!quickViewProduct) return null;
 
