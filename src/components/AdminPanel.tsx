@@ -649,6 +649,7 @@ export const AdminPanel: React.FC = () => {
 
   // Form states for Product Modal
   const [pName, setPName] = useState('');
+  const [pBrand, setPBrand] = useState('');
   const [pMainCat, setPMainCat] = useState('');
   const [pSubCat, setPSubCat] = useState('');
   const [pLeafCat, setPLeafCat] = useState('');
@@ -936,6 +937,7 @@ export const AdminPanel: React.FC = () => {
   const handleOpenAddProduct = () => {
     setEditingProduct(null);
     setPName('');
+    setPBrand('');
     const mainKeys = Object.keys(categoriesTree);
     const initialMain = mainKeys[0] || '';
     setPMainCat(initialMain);
@@ -957,6 +959,7 @@ export const AdminPanel: React.FC = () => {
   const handleOpenEditProduct = (p: Product) => {
     setEditingProduct(p);
     setPName(p.name);
+    setPBrand(p.brand || '');
     const initialMain = p.mainCategory || Object.keys(categoriesTree)[0] || '';
     setPMainCat(initialMain);
     setPSubCat(p.subCategory || '');
@@ -980,6 +983,7 @@ export const AdminPanel: React.FC = () => {
     const savedProd: Product = {
       id: editingProduct ? editingProduct.id : 'prod-' + Date.now(),
       name: pName,
+      brand: pBrand.trim() || undefined,
       category: pLeafCat || pSubCat || pMainCat || 'Загальне',
       mainCategory: pMainCat,
       subCategory: pSubCat,
@@ -4314,13 +4318,24 @@ export const AdminPanel: React.FC = () => {
 
               <form onSubmit={handleSaveProductForm} className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Назва товару *</label>
+                  <label className="block font-semibold text-emerald-700 mb-1">Назва товару *</label>
                   <input
                     type="text"
                     required
                     value={pName}
                     onChange={(e) => setPName(e.target.value)}
                     placeholder="напр., Змішувач для ванни одноважільний"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Виробник / Бренд</label>
+                  <input
+                    type="text"
+                    value={pBrand}
+                    onChange={(e) => setPBrand(e.target.value)}
+                    placeholder="напр., WAGO, Valtec, Grohe, Cersanit"
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
                   />
                 </div>
