@@ -7,7 +7,6 @@ import {
   Menu, 
   X, 
   Sparkles,
-  Lock,
   Flame,
   Search,
   LayoutGrid
@@ -409,16 +408,6 @@ export const Header: React.FC = () => {
                 className="text-left px-3 py-2 rounded-xl bg-slate-50 text-xs font-semibold text-slate-800"
               >
                 Особистий кабінет
-              </button>
-              <button
-                onClick={() => {
-                  setActiveView('admin');
-                  setIsMobileMenuOpen(false);
-                }}
-                className="col-span-2 text-left px-3 py-2 rounded-xl bg-slate-50 text-xs font-semibold text-slate-800 flex items-center gap-1.5"
-              >
-                <Lock className="w-3.5 h-3.5 text-slate-500" />
-                <span>Адмін-панель</span>
               </button>
             </div>
           </div>
