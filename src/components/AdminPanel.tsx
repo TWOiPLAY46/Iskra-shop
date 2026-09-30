@@ -797,7 +797,7 @@ export const AdminPanel: React.FC = () => {
                     setAdminEmail(e.target.value);
                     setLoginError(null);
                   }}
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-50"
+                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-base sm:text-xs text-slate-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-50"
                 />
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               </div>
@@ -819,7 +819,7 @@ export const AdminPanel: React.FC = () => {
                     setAdminPassword(e.target.value);
                     setLoginError(null);
                   }}
-                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-50 font-mono"
+                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 text-base sm:text-xs text-slate-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all disabled:opacity-50 font-mono"
                 />
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <button
