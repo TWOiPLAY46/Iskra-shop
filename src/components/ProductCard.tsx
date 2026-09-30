@@ -128,7 +128,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             {isOutOfStock ? (
               <span className="text-red-600 font-bold">Закінчився на складі</span>
             ) : showLowStockBadge ? (
-              <span className="text-amber-800 bg-amber-50 border border-amber-200/90 font-bold px-1.5 py-0.5 rounded animate-pulse inline-flex items-center gap-1">
+              <span className="text-amber-800 bg-amber-50 border border-amber-200/90 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
                 <span>⚠️ Закінчується!</span>
                 <span>Залишилося {product.stock} {product.unit.replace('грн/', '') || 'шт.'}</span>
               </span>

@@ -97,15 +97,10 @@ const InlineStockInput: React.FC<InlineStockInputProps> = ({
     const raw = e.target.value;
     if (raw === '') {
       setVal('');
-      updateProductStock(productId, 0);
       return;
     }
     const cleaned = raw.length > 1 ? raw.replace(/^0+(?=\d)/, '') : raw;
     setVal(cleaned);
-    const num = parseInt(cleaned, 10);
-    if (!isNaN(num) && num >= 0) {
-      updateProductStock(productId, num);
-    }
   };
 
   const handleBlur = () => {
@@ -120,6 +115,12 @@ const InlineStockInput: React.FC<InlineStockInputProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
   const currentNum = parseInt(val, 10) || 0;
 
   return (
@@ -131,6 +132,7 @@ const InlineStockInput: React.FC<InlineStockInputProps> = ({
       onFocus={(e) => e.target.select()}
       onChange={handleChange}
       onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
       className={`w-16 px-2 py-1 border rounded text-xs font-mono tabular-nums text-center font-bold outline-none transition-colors ${
         currentNum <= 0
           ? 'border-rose-400 bg-rose-50 text-rose-700 font-bold'
@@ -167,10 +169,6 @@ const InlinePriceInput: React.FC<InlinePriceInputProps> = ({
     }
     const cleaned = raw.length > 1 ? raw.replace(/^0+(?=\d)/, '') : raw;
     setVal(cleaned);
-    const num = parseFloat(cleaned);
-    if (!isNaN(num) && num >= 0) {
-      updateProductPrice(productId, num);
-    }
   };
 
   const handleBlur = () => {
@@ -185,6 +183,12 @@ const InlinePriceInput: React.FC<InlinePriceInputProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
   return (
     <input
       type="text"
@@ -193,6 +197,7 @@ const InlinePriceInput: React.FC<InlinePriceInputProps> = ({
       onFocus={(e) => e.target.select()}
       onChange={handleChange}
       onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
       className="w-20 px-2 py-1 border border-slate-300 rounded font-bold font-display text-slate-900 tabular-nums text-center outline-none focus:border-orange-500"
     />
   );
@@ -1234,7 +1239,7 @@ export const AdminPanel: React.FC = () => {
       {/* Top Admin Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-6 mb-6 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="bg-slate-900 text-orange-500 px-2 py-0.5 rounded text-sm font-black">
               ADMIN PRO
             </span>
@@ -2621,7 +2626,7 @@ export const AdminPanel: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setProductToDelete(p.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             title="Видалити товар"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -4697,7 +4702,7 @@ export const AdminPanel: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setPImage('')}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title="Очистити фото"
                         >
                           <Trash2 className="w-4 h-4" />

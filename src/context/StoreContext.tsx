@@ -406,7 +406,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   // Navigation & filters
-  const [activeView, setActiveView] = useState<'store' | 'account' | 'admin'>('store');
+  const [activeView, setActiveView] = useState<'store' | 'account' | 'admin'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('iskra_active_view');
+      if (saved === 'admin' && verifySecureSession().isValid) return 'admin';
+      if (saved === 'account') return 'account';
+    }
+    return 'store';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('iskra_active_view', activeView);
+    }
+  }, [activeView]);
+
   const [activeCategory, setActiveCategory] = useState<string>('Усі');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortOption, setSortOption] = useState<'default' | 'price-asc' | 'price-desc' | 'name-asc'>('default');
