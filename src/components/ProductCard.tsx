@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Product } from '../types/store';
 import { useStore } from '../context/StoreContext';
 import { getProductBrand } from '../utils/brandHelper';
-import { ShoppingBag, Heart, Droplets, Zap, Check } from 'lucide-react';
+import { ShoppingBag, Heart, Droplets, Zap, Check, AlertTriangle, Flame } from 'lucide-react';
 import { getSafeImageUrl } from '../utils/assetImages';
 
 interface ProductCardProps {
@@ -126,14 +126,25 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           {/* Stock Status */}
           <div className="text-[11px] font-semibold mb-3">
             {isOutOfStock ? (
-              <span className="text-red-600 font-bold">Закінчився на складі</span>
-            ) : showLowStockBadge ? (
-              <span className="text-amber-800 bg-amber-50 border border-amber-200/90 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
-                <span>⚠️ Закінчується!</span>
-                <span>Залишилося {product.stock} {product.unit.replace('грн/', '') || 'шт.'}</span>
+              <span className="inline-flex items-center gap-1.5 text-slate-400 font-medium text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                <span>Закінчився на складі</span>
               </span>
+            ) : showLowStockBadge ? (
+              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-900 text-[11px] font-bold">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
+                <span className="tracking-tight">
+                  Закінчується: <span className="font-extrabold text-amber-950 font-mono">лише {product.stock} {product.unit.replace('грн/', '') || 'шт.'}</span>
+                </span>
+              </div>
             ) : (
-              <span className="text-emerald-700">В наявності: {product.stock}</span>
+              <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>В наявності ({product.stock} {product.unit.replace('грн/', '') || 'шт.'})</span>
+              </span>
             )}
           </div>
         </div>

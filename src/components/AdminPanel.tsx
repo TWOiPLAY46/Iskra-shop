@@ -61,6 +61,8 @@ import {
   Image as ImageIcon,
   ChevronDown,
   Check,
+  Truck,
+  CreditCard,
   X
 } from 'lucide-react';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
@@ -597,11 +599,11 @@ export const AdminPanel: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'products' | 'weekly_deal' | 'categories' | 'orders' | 'reviews' | 'clients' | 'analytics' | 'features' | 'database' | 'design' | 'settings'
+    'products' | 'weekly_deal' | 'categories' | 'orders' | 'reviews' | 'clients' | 'analytics' | 'features' | 'database' | 'delivery' | 'payments' | 'design' | 'settings'
   >(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('iskra_admin_tab');
-      const validTabs = ['products', 'weekly_deal', 'categories', 'orders', 'reviews', 'clients', 'analytics', 'features', 'database', 'design', 'settings'];
+      const validTabs = ['products', 'weekly_deal', 'categories', 'orders', 'reviews', 'clients', 'analytics', 'features', 'database', 'delivery', 'payments', 'design', 'settings'];
       if (saved && validTabs.includes(saved)) {
         return saved as any;
       }
@@ -1502,6 +1504,26 @@ export const AdminPanel: React.FC = () => {
         >
           <Star className={`w-4 h-4 ${activeTab === 'reviews' ? 'text-amber-500 fill-amber-500' : 'text-amber-500'}`} />
           <span>Відгуки ({reviews.length})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('delivery')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'delivery' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Truck className="w-4 h-4 text-orange-600" />
+          <span>Доставка (НП/Укрпошта)</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('payments')}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'payments' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <CreditCard className="w-4 h-4 text-emerald-600" />
+          <span>Онлайн-оплата</span>
         </button>
 
         <button
@@ -4300,6 +4322,300 @@ export const AdminPanel: React.FC = () => {
               Зберегти всі налаштування
             </button>
           </div>
+        </form>
+      )}
+
+      {/* TAB: DELIVERY CONFIGURATION (Nova Poshta & Ukrposhta) */}
+      {activeTab === 'delivery' && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateSiteSettings(settingsForm);
+            showToast('Налаштування служб доставки успішно збережено!', 'success');
+          }}
+          className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6 max-w-3xl"
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Truck className="w-5 h-5 text-red-600" />
+                <span>Інтеграція служб доставки (Нова Пошта & Укрпошта)</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Керування автоматичним вибором міст, відділень та поштоматів для покупців
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Автопідбір активний</span>
+            </span>
+          </div>
+
+          {/* Nova Poshta Settings */}
+          <div className="p-4 rounded-xl border border-red-100 bg-red-50/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-red-600 text-white font-black text-[10px] flex items-center justify-center">
+                  НП
+                </div>
+                <h4 className="text-xs font-bold text-slate-900">Нова Пошта API</h4>
+              </div>
+              <a
+                href="https://my.novaposhta.ua/settings/index#api"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1"
+              >
+                <span>Отримати ключ в кабінеті</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Вкажіть API ключ Нової Пошти, щоб у формі замовлення підвантажувався повний актуальний список відділень та поштоматів по всій Україні. Якщо ключ не вказано — працює надійний вбудований довідник міст.
+            </p>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                API Ключ Нової Пошти (32 символи)
+              </label>
+              <input
+                type="text"
+                placeholder="напр., a1b2c3d4e5f67890123456789abcdef0"
+                value={settingsForm.novaPoshtaApiKey || ''}
+                onChange={(e) => setSettingsForm({ ...settingsForm, novaPoshtaApiKey: e.target.value })}
+                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-mono text-xs bg-white outline-none focus:border-red-600"
+              />
+            </div>
+          </div>
+
+          {/* Ukrposhta Settings */}
+          <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-amber-500 text-white font-black text-[10px] flex items-center justify-center">
+                  УП
+                </div>
+                <h4 className="text-xs font-bold text-slate-900">Укрпошта</h4>
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">Стандарт & Експрес</span>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Доставка Укрпоштою по індексу та населеному пункту. Покупець може обрати відділення Укрпошти або поштовий індекс.
+            </p>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                Токен доступу Укрпошти (необов'язково)
+              </label>
+              <input
+                type="text"
+                placeholder="Введіть eComm токен (за наявності)"
+                value={settingsForm.ukrposhtaToken || ''}
+                onChange={(e) => setSettingsForm({ ...settingsForm, ukrposhtaToken: e.target.value })}
+                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-mono text-xs bg-white outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          {/* Free Shipping Settings */}
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+            <h4 className="text-xs font-bold text-slate-900">Поріг безкоштовної доставки</h4>
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                  Сума замовлення для безкоштовної доставки (грн)
+                </label>
+                <input
+                  type="number"
+                  value={settingsForm.features?.freeShippingThreshold ?? 3000}
+                  onChange={(e) => setSettingsForm({
+                    ...settingsForm,
+                    features: {
+                      ...settingsForm.features,
+                      freeShippingThreshold: Number(e.target.value) || 0
+                    }
+                  })}
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-xs bg-white outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm"
+          >
+            Зберегти налаштування доставки
+          </button>
+        </form>
+      )}
+
+      {/* TAB: ONLINE PAYMENTS (WayForPay, Monobank, LiqPay) */}
+      {activeTab === 'payments' && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateSiteSettings(settingsForm);
+            showToast('Налаштування онлайн-оплати успішно збережено!', 'success');
+          }}
+          className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6 max-w-3xl"
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-600" />
+                <span>Онлайн-оплата карткою, Apple Pay та Google Pay</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Підключення прийому платежів через українські платіжні системи
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Безпечні платежі</span>
+            </span>
+          </div>
+
+          {/* Gateway Selector */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-slate-800">
+              Оберіть платіжного провайдера:
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setSettingsForm({ ...settingsForm, paymentGateway: 'wayforpay' })}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  settingsForm.paymentGateway === 'wayforpay'
+                    ? 'border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-600/20'
+                    : 'border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <div className="font-black text-xs text-slate-900 mb-0.5">WayForPay</div>
+                <div className="text-[10px] text-slate-500">Apple Pay, Google Pay, Visa/Mastercard</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSettingsForm({ ...settingsForm, paymentGateway: 'monobank' })}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  settingsForm.paymentGateway === 'monobank'
+                    ? 'border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-600/20'
+                    : 'border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <div className="font-black text-xs text-slate-900 mb-0.5">Monobank (monoPay)</div>
+                <div className="text-[10px] text-slate-500">Швидка оплата в 1 клік через застосунок mono</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSettingsForm({ ...settingsForm, paymentGateway: 'liqpay' })}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  settingsForm.paymentGateway === 'liqpay'
+                    ? 'border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-600/20'
+                    : 'border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <div className="font-black text-xs text-slate-900 mb-0.5">LiqPay (ПриватБанк)</div>
+                <div className="text-[10px] text-slate-500">Приват24, картки будь-яких банків</div>
+              </button>
+            </div>
+          </div>
+
+          {/* Gateway specific fields */}
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3 text-xs">
+            {settingsForm.paymentGateway === 'wayforpay' && (
+              <>
+                <div className="font-bold text-slate-900">Налаштування мерчанта WayForPay:</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Merchant Account (ID магазину)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="напр., test_merch_n1"
+                      value={settingsForm.paymentMerchantId || ''}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, paymentMerchantId: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Merchant Secret Key (Секретний ключ)
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Введіть секретний ключ"
+                      value={settingsForm.paymentSecretKey || ''}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, paymentSecretKey: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-mono"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {settingsForm.paymentGateway === 'monobank' && (
+              <>
+                <div className="font-bold text-slate-900">Налаштування еквайрингу Monobank:</div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Токен еквайрингу Monobank (X-Token)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Вставте токен з особистого кабінету monobank.ua/e-comm"
+                    value={settingsForm.monobankToken || ''}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, monobankToken: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-mono"
+                  />
+                </div>
+              </>
+            )}
+
+            {settingsForm.paymentGateway === 'liqpay' && (
+              <>
+                <div className="font-bold text-slate-900">Налаштування LiqPay (ПриватБанк):</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Public Key (Публічний ключ)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="i00000000000"
+                      value={settingsForm.paymentMerchantId || ''}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, paymentMerchantId: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Private Key (Приватний ключ)
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Введіть приватний ключ"
+                      value={settingsForm.paymentSecretKey || ''}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, paymentSecretKey: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-mono"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm"
+          >
+            Зберегти налаштування онлайн-оплати
+          </button>
         </form>
       )}
 

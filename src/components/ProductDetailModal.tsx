@@ -25,6 +25,7 @@ export const ProductDetailModal: React.FC = () => {
     setQuickViewProduct, 
     addToCart, 
     products,
+    siteSettings,
     showToast 
   } = useStore();
 
@@ -33,6 +34,9 @@ export const ProductDetailModal: React.FC = () => {
   const [addedItemIds, setAddedItemIds] = useState<string[]>([]);
 
   const isOutOfStock = quickViewProduct ? quickViewProduct.stock <= 0 : false;
+  const lowThreshold = siteSettings?.features?.lowStockThreshold ?? 3;
+  const isLowStock = !isOutOfStock && quickViewProduct ? quickViewProduct.stock <= lowThreshold : false;
+  const showLowStockBadge = isLowStock && (siteSettings?.features?.showLowStockBadgeToBuyers ?? true);
 
   const isPlumbing = useMemo(() => {
     if (!quickViewProduct) return false;
@@ -170,12 +174,27 @@ export const ProductDetailModal: React.FC = () => {
                     <span className="text-slate-500 font-medium">Артикул</span>
                     <span className="font-mono font-semibold text-slate-800">{quickViewProduct.sku}</span>
                   </div>
-                  <div className="flex justify-between py-1.5">
-                    <span className="text-slate-500 font-medium">В наявності</span>
-                    <span className="font-bold text-emerald-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 inline" />
-                      {quickViewProduct.stock > 0 ? `${quickViewProduct.stock} шт.` : 'Немає на складі'}
-                    </span>
+                  <div className="flex justify-between py-1.5 items-center">
+                    <span className="text-slate-500 font-medium">Статус товару</span>
+                    {isOutOfStock ? (
+                      <span className="font-semibold text-slate-400 text-xs flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                        Немає на складі
+                      </span>
+                    ) : showLowStockBadge ? (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs font-bold">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                        </span>
+                        <span>Закінчується: лише {quickViewProduct.stock} {quickViewProduct.unit.replace('грн/', '') || 'шт.'}</span>
+                      </span>
+                    ) : (
+                      <span className="font-bold text-emerald-600 flex items-center gap-1 text-xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        В наявності: {quickViewProduct.stock} {quickViewProduct.unit.replace('грн/', '') || 'шт.'}
+                      </span>
+                    )}
                   </div>
                   {quickViewProduct.specs && Object.entries(quickViewProduct.specs).slice(0, 2).map(([key, val]) => (
                     <div key={key} className="flex justify-between py-1.5">

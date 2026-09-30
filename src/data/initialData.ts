@@ -530,6 +530,12 @@ export const initialSiteSettings: SiteSettings = {
   address: "вул. Героїв Майдану, 14",
   workHours: "Пн-Пт: 08:00 - 18:00, Сб: 08:00 - 15:00, Нд: Вихідний",
   adminPassword: "admin",
+  novaPoshtaApiKey: "",
+  ukrposhtaToken: "",
+  paymentGateway: "wayforpay",
+  paymentMerchantId: "test_merch_n1",
+  paymentSecretKey: "",
+  monobankToken: "",
   features: {
     ordersEnabled: true,
     loyaltyEnabled: true,

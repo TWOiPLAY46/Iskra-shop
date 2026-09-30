@@ -10,6 +10,7 @@ import { ProductDetailModal } from './components/ProductDetailModal';
 import { Footer } from './components/Footer';
 import { Toast } from './components/Toast';
 import { ConsultationWidget } from './components/ConsultationWidget';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const AppContent: React.FC = () => {
   const { activeView } = useStore();
@@ -44,8 +45,10 @@ const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <StoreProvider>
-      <AppContent />
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <AppContent />
+      </StoreProvider>
+    </ErrorBoundary>
   );
 }

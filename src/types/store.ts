@@ -98,6 +98,13 @@ export interface SiteSettings {
   address: string;
   workHours: string;
   adminPassword?: string;
+  novaPoshtaApiKey?: string;
+  ukrposhtaToken?: string;
+  // Online Payment Gateways (WayForPay, Monobank, LiqPay)
+  paymentGateway?: 'wayforpay' | 'monobank' | 'liqpay' | 'manual';
+  paymentMerchantId?: string;
+  paymentSecretKey?: string;
+  monobankToken?: string;
   features: SiteFeatures;
 }
 

@@ -542,12 +542,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // If cloud has catalog, hydrate from it. If cloud is empty, seed it with current store!
     fetchStoreFromFirebase(firebaseConfig)
       .then((cloudData) => {
-        if (cloudData && (cloudData.products?.length > 0 || cloudData.siteSettings || cloudData.reviews)) {
+        if (cloudData && (cloudData.products || cloudData.siteSettings || cloudData.reviews || cloudData.categoriesTree)) {
           setDbStatus('connected');
-          if (cloudData.products && Array.isArray(cloudData.products)) setProducts(cloudData.products);
+          const cloudProds = Array.isArray(cloudData.products) 
+            ? cloudData.products 
+            : (cloudData.products && typeof cloudData.products === 'object' ? Object.values(cloudData.products) : null);
+          if (cloudProds && cloudProds.length > 0) setProducts(cloudProds as Product[]);
           if (cloudData.categoriesTree) setCategoriesTree(normalizeCategoriesTree(cloudData.categoriesTree));
-          if (cloudData.orders && Array.isArray(cloudData.orders)) {
-            setOrders(cloudData.orders.filter((o: Order) => o.id !== 'ORD-948120' && o.phone !== '+380971234567'));
+          
+          const cloudOrders = Array.isArray(cloudData.orders) 
+            ? cloudData.orders 
+            : (cloudData.orders && typeof cloudData.orders === 'object' ? Object.values(cloudData.orders) : null);
+          if (cloudOrders) {
+            setOrders((cloudOrders as Order[]).filter((o: Order) => o && o.id !== 'ORD-948120' && o.phone !== '+380971234567'));
           }
           if (cloudData.clients && typeof cloudData.clients === 'object') {
             const clean: Record<string, ClientData> = {};
@@ -558,9 +565,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
             setClients(clean);
           }
-          if (cloudData.reviews && Array.isArray(cloudData.reviews)) setReviews(cloudData.reviews);
+          const cloudReviews = Array.isArray(cloudData.reviews) 
+            ? cloudData.reviews 
+            : (cloudData.reviews && typeof cloudData.reviews === 'object' ? Object.values(cloudData.reviews) : null);
+          if (cloudReviews && cloudReviews.length > 0) setReviews(cloudReviews as ProductReview[]);
           if (cloudData.siteSettings) setSiteSettings((prev) => ({ ...prev, ...cloudData.siteSettings }));
           if (cloudData.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...cloudData.headerDesign }));
+          if (cloudData.weeklyDeal) setWeeklyDeal((prev) => ({ ...prev, ...cloudData.weeklyDeal }));
         } else if (isFirstLoad.current) {
           isFirstLoad.current = false;
           // Seed the database so Firebase console displays everything
@@ -572,6 +583,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             reviews,
             siteSettings,
             headerDesign: cleanHeaderDesign(headerDesign),
+            weeklyDeal,
             lastSyncTimestamp: Date.now()
           }).then((ok) => {
             if (ok) setDbStatus('connected');
@@ -587,10 +599,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const unsubscribe = subscribeToStore(firebaseConfig, (data) => {
       if (data) {
         setDbStatus('connected');
-        if (data.products && Array.isArray(data.products)) setProducts(data.products);
+        const liveProds = Array.isArray(data.products) 
+          ? data.products 
+          : (data.products && typeof data.products === 'object' ? Object.values(data.products) : null);
+        if (liveProds && liveProds.length > 0) setProducts(liveProds as Product[]);
         if (data.categoriesTree && typeof data.categoriesTree === 'object') setCategoriesTree(normalizeCategoriesTree(data.categoriesTree));
-        if (data.orders && Array.isArray(data.orders)) {
-          setOrders(data.orders.filter((o: Order) => o.id !== 'ORD-948120' && o.phone !== '+380971234567'));
+        
+        const liveOrders = Array.isArray(data.orders) 
+          ? data.orders 
+          : (data.orders && typeof data.orders === 'object' ? Object.values(data.orders) : null);
+        if (liveOrders) {
+          setOrders((liveOrders as Order[]).filter((o: Order) => o && o.id !== 'ORD-948120' && o.phone !== '+380971234567'));
         }
         if (data.clients && typeof data.clients === 'object') {
           const clean: Record<string, ClientData> = {};
@@ -601,9 +620,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
           setClients(clean);
         }
-        if (data.reviews && Array.isArray(data.reviews)) setReviews(data.reviews);
+        const liveReviews = Array.isArray(data.reviews) 
+          ? data.reviews 
+          : (data.reviews && typeof data.reviews === 'object' ? Object.values(data.reviews) : null);
+        if (liveReviews && liveReviews.length > 0) setReviews(liveReviews as ProductReview[]);
         if (data.siteSettings) setSiteSettings((prev) => ({ ...prev, ...data.siteSettings }));
         if (data.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...data.headerDesign }));
+        if (data.weeklyDeal) setWeeklyDeal((prev) => ({ ...prev, ...data.weeklyDeal }));
       }
     });
 

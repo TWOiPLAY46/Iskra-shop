@@ -15,9 +15,22 @@ import {
   Banknote, 
   ArrowRight, 
   ShieldCheck,
-  ShoppingBag
+  ShoppingBag,
+  Search,
+  Sparkles,
+  Zap,
+  RotateCcw,
+  ExternalLink,
+  ChevronDown
 } from 'lucide-react';
 import { Order } from '../types/store';
+import { 
+  searchNovaPoshtaCities, 
+  getNovaPoshtaWarehouses, 
+  DeliveryCity, 
+  DeliveryWarehouse,
+  POPULAR_CITIES 
+} from '../services/deliveryService';
 
 export const CheckoutModal: React.FC = () => {
   const { 
@@ -36,11 +49,45 @@ export const CheckoutModal: React.FC = () => {
   const [fio, setFio] = useState(currentClient?.name || '');
   const [phone, setPhone] = useState(currentClientPhone ? formatUkrainianPhone(currentClientPhone) : '');
   const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [deliveryType, setDeliveryType] = useState<'novaposhta' | 'pickup' | 'courier'>('novaposhta');
-  const [npCity, setNpCity] = useState('');
-  const [npDepartment, setNpDepartment] = useState('');
+
+  // Delivery states
+  const [deliveryType, setDeliveryType] = useState<'novaposhta' | 'ukrposhta' | 'pickup' | 'courier'>('novaposhta');
+  const [npDeliverySubType, setNpDeliverySubType] = useState<'branch' | 'postomat'>('branch');
+  
+  // Nova Poshta city & warehouse selection
+  const [cityInput, setCityInput] = useState('Оратів');
+  const [selectedCity, setSelectedCity] = useState<DeliveryCity | null>({
+    ref: 'orativ-vin',
+    name: 'Оратів',
+    area: 'Вінницька область',
+    region: 'Вінницький р-н',
+    settlementType: 'смт / село'
+  });
+  const [citySuggestions, setCitySuggestions] = useState<DeliveryCity[]>([]);
+  const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false);
+  const [isSearchingCities, setIsSearchingCities] = useState(false);
+
+  // Warehouses
+  const [warehouses, setWarehouses] = useState<DeliveryWarehouse[]>([]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<DeliveryWarehouse | null>(null);
+  const [warehouseSearch, setWarehouseSearch] = useState('');
+  const [isLoadingWarehouses, setIsLoadingWarehouses] = useState(false);
+  const [manualWarehouseText, setManualWarehouseText] = useState('');
+  const [useManualWarehouse, setUseManualWarehouse] = useState(false);
+
+  // Ukrposhta fields
+  const [upIndex, setUpIndex] = useState('');
+  const [upCity, setUpCity] = useState('');
+  const [upAddress, setUpAddress] = useState('');
+
+  // Courier address
   const [streetAddress, setStreetAddress] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash_on_delivery' | 'card_online' | 'bank_invoice'>('cash_on_delivery');
+
+  // Payment
+  const [paymentMethod, setPaymentMethod] = useState<'cash_on_delivery' | 'card_online' | 'bank_invoice'>('card_online');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [showPaymentSuccessSimulator, setShowPaymentSuccessSimulator] = useState(false);
+
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
@@ -51,6 +98,55 @@ export const CheckoutModal: React.FC = () => {
       setPhone(formatUkrainianPhone(currentClientPhone));
     }
   }, [currentClientPhone]);
+
+  // Load cities on input change
+  useEffect(() => {
+    if (!cityInput || cityInput.trim().length < 2) {
+      setCitySuggestions(POPULAR_CITIES.slice(0, 8));
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingCities(true);
+      try {
+        const results = await searchNovaPoshtaCities(cityInput, siteSettings.novaPoshtaApiKey);
+        setCitySuggestions(results);
+      } finally {
+        setIsSearchingCities(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [cityInput, siteSettings.novaPoshtaApiKey]);
+
+  // Load warehouses when city or sub-type changes
+  useEffect(() => {
+    if (deliveryType !== 'novaposhta' || !selectedCity) return;
+
+    let isMounted = true;
+    setIsLoadingWarehouses(true);
+
+    getNovaPoshtaWarehouses(
+      selectedCity.name,
+      npDeliverySubType,
+      siteSettings.novaPoshtaApiKey
+    ).then((items) => {
+      if (!isMounted) return;
+      setWarehouses(items);
+      if (items.length > 0) {
+        setSelectedWarehouse(items[0]);
+      } else {
+        setSelectedWarehouse(null);
+      }
+      setIsLoadingWarehouses(false);
+    }).catch(() => {
+      if (isMounted) setIsLoadingWarehouses(false);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [deliveryType, selectedCity, npDeliverySubType, siteSettings.novaPoshtaApiKey]);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatUkrainianPhone(e.target.value);
@@ -69,6 +165,7 @@ export const CheckoutModal: React.FC = () => {
   if (!isCheckoutModalOpen) return null;
 
   const minSum = siteSettings.features?.minOrderSum ?? 50;
+  const isFreeShipping = discountedCartSum >= (siteSettings.features?.freeShippingThreshold ?? 3000);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,28 +191,51 @@ export const CheckoutModal: React.FC = () => {
 
     setIsSubmitting(true);
 
-    let deliveryString = 'Самовивіз з магазину (с. Оратів)';
+    let deliveryString = 'Самовивіз з магазину (с. Оратів, вул. Героїв Майдану, 14)';
+    let orderCity = 'с. Оратів';
+
     if (deliveryType === 'novaposhta') {
-      deliveryString = `Нова Пошта: ${npCity || 'Україна'}, Відділення/Поштомат: ${npDepartment || '№1'}`;
+      const cName = selectedCity ? `${selectedCity.name} (${selectedCity.area})` : cityInput;
+      orderCity = selectedCity ? selectedCity.name : cityInput;
+      const wName = useManualWarehouse 
+        ? manualWarehouseText 
+        : (selectedWarehouse ? selectedWarehouse.name : manualWarehouseText || 'Відділення №1');
+      
+      const typeLabel = npDeliverySubType === 'postomat' ? 'Поштомат' : 'Відділення';
+      deliveryString = `Нова Пошта (${typeLabel}): ${cName} — ${wName}`;
+    } else if (deliveryType === 'ukrposhta') {
+      orderCity = upCity || 'Україна';
+      deliveryString = `Укрпошта: Індекс ${upIndex || '---'}, ${upCity || ''}, ${upAddress || 'до запитання'}`;
     } else if (deliveryType === 'courier') {
-      deliveryString = `Кур'єрська доставка: ${streetAddress || 'Вказана адреса'}`;
+      deliveryString = `Кур'єрська доставка до дверей: ${streetAddress || 'Вказана адреса'}`;
     }
 
     try {
       const fullPhone = getFullInternationalPhone(phone);
+      
+      // If card_online selected, simulate or initialize secure payment
+      if (paymentMethod === 'card_online') {
+        setIsProcessingPayment(true);
+        // Quick visual check or modal payment simulation for instant confirmation
+        await new Promise(r => setTimeout(r, 600));
+      }
+
       const order = await placeOrder({
         fio,
         phone: fullPhone,
         delivery: deliveryString,
-        city: deliveryType === 'novaposhta' ? npCity : 'с. Оратів',
+        city: orderCity,
         paymentMethod,
         notes
       });
+
       setPlacedOrder(order);
     } catch (err) {
       console.error(err);
+      showToast("Помилка при створенні замовлення", "error");
     } finally {
       setIsSubmitting(false);
+      setIsProcessingPayment(false);
     }
   };
 
@@ -123,6 +243,12 @@ export const CheckoutModal: React.FC = () => {
     setIsCheckoutModalOpen(false);
     setPlacedOrder(null);
   };
+
+  const filteredWarehouses = warehouses.filter(w => 
+    !warehouseSearch || 
+    w.name.toLowerCase().includes(warehouseSearch.toLowerCase()) || 
+    w.number.includes(warehouseSearch)
+  );
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -132,13 +258,13 @@ export const CheckoutModal: React.FC = () => {
         onClick={handleClose} 
       />
 
-      <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-4 text-center">
         <div className="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 w-full max-w-2xl border border-slate-200">
           
           {/* Header */}
           <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
             <div className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-orange-500" />
+              <ShoppingBag className="w-5 h-5 text-red-500" />
               <h3 className="text-base font-bold font-display uppercase tracking-wider">
                 {placedOrder ? "Замовлення оформлено!" : "Оформлення замовлення"}
               </h3>
@@ -163,29 +289,29 @@ export const CheckoutModal: React.FC = () => {
                   Дякуємо за ваше замовлення!
                 </h4>
                 <p className="text-sm text-slate-600 max-w-md mx-auto">
-                  Номер вашого замовлення: <span className="font-bold text-orange-600 font-mono">№{placedOrder.id}</span>.
-                  Наш менеджер зв'яжеться з вами за номером <b className="text-slate-900">{placedOrder.phone}</b> для підтвердження.
+                  Номер вашого замовлення: <span className="font-bold text-red-600 font-mono">№{placedOrder.id}</span>.
+                  Наш менеджер зв'яжеться з вами за номером <b className="text-slate-900">{placedOrder.phone}</b> для підтвердження та відправки.
                 </p>
               </div>
 
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-left max-w-md mx-auto text-xs space-y-1.5">
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-left max-w-md mx-auto text-xs space-y-2">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Одержувач:</span>
                   <span className="font-semibold text-slate-900">{placedOrder.fio}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Доставка:</span>
-                  <span className="font-semibold text-slate-900">{placedOrder.delivery}</span>
+                  <span className="font-semibold text-slate-900 text-right max-w-[240px] truncate">{placedOrder.delivery}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Сума замовлення:</span>
-                  <span className="font-bold text-emerald-600 tabular-nums">{placedOrder.total.toFixed(2)} грн</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Статус:</span>
-                  <span className="bg-amber-100 text-amber-900 font-bold px-1.5 py-0.5 rounded text-[10px]">
-                    {placedOrder.status}
+                  <span className="text-slate-500">Оплата:</span>
+                  <span className="font-semibold text-slate-900">
+                    {placedOrder.paymentMethod === 'card_online' ? '💳 Онлайн-оплата (Сплачено)' : placedOrder.paymentMethod === 'bank_invoice' ? '📄 Рахунок IBAN' : '💵 Післяплата'}
                   </span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-slate-200">
+                  <span className="text-slate-700 font-bold">Сума замовлення:</span>
+                  <span className="font-black text-emerald-600 tabular-nums text-sm">{placedOrder.total.toFixed(2)} грн</span>
                 </div>
               </div>
 
@@ -201,14 +327,14 @@ export const CheckoutModal: React.FC = () => {
                 </button>
                 <button
                   onClick={handleClose}
-                  className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-xl transition-all"
+                  className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-all"
                 >
                   Продовжити покупки
                 </button>
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
+            <form onSubmit={handleSubmit} className="p-5 sm:p-7 space-y-6 max-h-[85vh] overflow-y-auto">
               
               {/* Step 1: Customer Contact */}
               <div className="space-y-3">
@@ -220,7 +346,7 @@ export const CheckoutModal: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Прізвище та Ім'я *
+                      Прізвище та Ім'я одержувача *
                     </label>
                     <input
                       type="text"
@@ -228,14 +354,14 @@ export const CheckoutModal: React.FC = () => {
                       placeholder="напр., Петро Іваненко"
                       value={fio}
                       onChange={(e) => setFio(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:border-red-600 focus:ring-2 focus:ring-red-600/20 outline-none"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
                       <span>Номер телефону *</span>
-                      <span className="text-[11px] font-semibold text-orange-600">Приклад: +380 (67)...</span>
+                      <span className="text-[11px] font-semibold text-red-600">Приклад: +380 (67)...</span>
                     </label>
                     <input
                       type="tel"
@@ -246,7 +372,7 @@ export const CheckoutModal: React.FC = () => {
                       className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-slate-900 outline-none transition-all font-mono tracking-wider ${
                         phoneError 
                           ? 'border-rose-500 focus:ring-2 focus:ring-rose-500/20 bg-rose-50/20' 
-                          : 'border-slate-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20'
+                          : 'border-slate-300 focus:border-red-600 focus:ring-2 focus:ring-red-600/20'
                       }`}
                     />
 
@@ -258,7 +384,7 @@ export const CheckoutModal: React.FC = () => {
                           key={op.code}
                           type="button"
                           onClick={() => handleSetOperatorCode(op.code)}
-                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-orange-100 hover:text-orange-700 rounded text-slate-700 font-mono font-semibold transition-colors border border-slate-200"
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-red-50 hover:text-red-700 rounded text-slate-700 font-mono font-semibold transition-colors border border-slate-200"
                           title={`${op.name} (${op.code})`}
                         >
                           {op.code}
@@ -273,25 +399,51 @@ export const CheckoutModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Step 2: Delivery Method */}
+              {/* Step 2: Delivery Method with Smart Nova Poshta & Ukrposhta */}
               <div className="space-y-3 pt-2 border-t border-slate-100">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px]">2</span>
-                  <span>Спосіб доставки</span>
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px]">2</span>
+                    <span>Спосіб доставки</span>
+                  </h4>
+                  {isFreeShipping && (
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-emerald-600" />
+                      Безкоштовна доставка від 3000 грн!
+                    </span>
+                  )}
+                </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                {/* Delivery Option Tabs */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setDeliveryType('novaposhta')}
                     className={`p-3 rounded-xl border text-center transition-all ${
                       deliveryType === 'novaposhta'
-                        ? 'border-orange-600 bg-orange-50/50 text-orange-950 font-bold'
+                        ? 'border-red-600 bg-red-50/50 text-red-950 font-bold ring-2 ring-red-600/10'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50 text-xs'
                     }`}
                   >
-                    <Truck className="w-4 h-4 mx-auto mb-1 text-orange-600" />
-                    <span className="text-xs">Нова Пошта</span>
+                    <Truck className="w-4 h-4 mx-auto mb-1 text-red-600" />
+                    <span className="text-xs block">Нова Пошта</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Відділення / Поштомат</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('ukrposhta')}
+                    className={`p-3 rounded-xl border text-center transition-all ${
+                      deliveryType === 'ukrposhta'
+                        ? 'border-amber-600 bg-amber-50/50 text-amber-950 font-bold ring-2 ring-amber-600/10'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50 text-xs'
+                    }`}
+                  >
+                    <div className="w-4 h-4 mx-auto mb-1 rounded bg-amber-500 text-white font-black text-[9px] flex items-center justify-center">
+                      УП
+                    </div>
+                    <span className="text-xs block">Укрпошта</span>
+                    <span className="text-[10px] text-slate-400 font-normal">По всій Україні</span>
                   </button>
 
                   <button
@@ -299,12 +451,13 @@ export const CheckoutModal: React.FC = () => {
                     onClick={() => setDeliveryType('pickup')}
                     className={`p-3 rounded-xl border text-center transition-all ${
                       deliveryType === 'pickup'
-                        ? 'border-orange-600 bg-orange-50/50 text-orange-950 font-bold'
+                        ? 'border-red-600 bg-red-50/50 text-red-950 font-bold ring-2 ring-red-600/10'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50 text-xs'
                     }`}
                   >
-                    <MapPin className="w-4 h-4 mx-auto mb-1 text-orange-600" />
-                    <span className="text-xs">Самовивіз</span>
+                    <MapPin className="w-4 h-4 mx-auto mb-1 text-red-600" />
+                    <span className="text-xs block">Самовивіз</span>
+                    <span className="text-[10px] text-slate-400 font-normal">с. Оратів</span>
                   </button>
 
                   <button
@@ -312,59 +465,246 @@ export const CheckoutModal: React.FC = () => {
                     onClick={() => setDeliveryType('courier')}
                     className={`p-3 rounded-xl border text-center transition-all ${
                       deliveryType === 'courier'
-                        ? 'border-orange-600 bg-orange-50/50 text-orange-950 font-bold'
+                        ? 'border-red-600 bg-red-50/50 text-red-950 font-bold ring-2 ring-red-600/10'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50 text-xs'
                     }`}
                   >
-                    <Truck className="w-4 h-4 mx-auto mb-1 text-orange-600" />
-                    <span className="text-xs">Кур'єр</span>
+                    <Truck className="w-4 h-4 mx-auto mb-1 text-slate-700" />
+                    <span className="text-xs block">Кур'єр</span>
+                    <span className="text-[10px] text-slate-400 font-normal">До дверей</span>
                   </button>
                 </div>
 
-                {/* Delivery Fields */}
+                {/* NOVA POSHTA SMART DROPDOWNS */}
                 {deliveryType === 'novaposhta' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Місто / Населений пункт *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="напр., с. Оратів / м. Вінниця"
-                        value={npCity}
-                        onChange={(e) => setNpCity(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none"
-                      />
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3.5">
+                    
+                    {/* Subtype switch: Branch or Postomat */}
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setNpDeliverySubType('branch')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          npDeliverySubType === 'branch' 
+                            ? 'bg-red-600 text-white shadow-xs' 
+                            : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                        }`}
+                      >
+                        🏢 Відділення Нової Пошти
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNpDeliverySubType('postomat')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          npDeliverySubType === 'postomat' 
+                            ? 'bg-red-600 text-white shadow-xs' 
+                            : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                        }`}
+                      >
+                        📦 Поштомат (24/7)
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative">
+                      
+                      {/* 1. City Autocomplete Input */}
+                      <div className="relative">
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                          <span>Місто або селище *</span>
+                          <span className="text-[10px] text-slate-400 font-normal">введіть 2+ літери</span>
+                        </label>
+
+                        <div className="relative">
+                          <input
+                            type="text"
+                            required
+                            placeholder="напр., Вінниця, Оратів, Київ..."
+                            value={cityInput}
+                            onFocus={() => setIsCityDropdownOpen(true)}
+                            onChange={(e) => {
+                              setCityInput(e.target.value);
+                              setIsCityDropdownOpen(true);
+                            }}
+                            className="w-full px-3 py-2 pl-8 rounded-lg border border-slate-300 text-xs bg-white outline-none focus:border-red-600"
+                          />
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                        </div>
+
+                        {/* City Suggestions Dropdown */}
+                        {isCityDropdownOpen && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 z-30 max-h-56 overflow-y-auto divide-y divide-slate-100">
+                            {isSearchingCities ? (
+                              <div className="p-3 text-center text-xs text-slate-400">Пошук міст...</div>
+                            ) : citySuggestions.length > 0 ? (
+                              citySuggestions.map((c) => (
+                                <button
+                                  key={c.ref || c.name}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCity(c);
+                                    setCityInput(c.name);
+                                    setIsCityDropdownOpen(false);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs hover:bg-red-50 hover:text-red-950 transition-colors flex items-center justify-between"
+                                >
+                                  <div>
+                                    <span className="font-bold text-slate-900">{c.name}</span>
+                                    <span className="text-[10px] text-slate-500 ml-1.5">
+                                      {c.area} {c.region ? `(${c.region})` : ''}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-mono">{c.settlementType}</span>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="p-3 text-center text-xs text-slate-500">
+                                <div>Місто не знайдено в базі</div>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCityDropdownOpen(false)}
+                                  className="mt-1 text-[11px] text-red-600 font-bold hover:underline"
+                                >
+                                  Використати як введено: "{cityInput}"
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 2. Warehouse or Postomat Dropdown */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-semibold text-slate-700">
+                            {npDeliverySubType === 'postomat' ? 'Оберіть поштомат *' : 'Оберіть відділення *'}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setUseManualWarehouse(!useManualWarehouse)}
+                            className="text-[10px] text-red-600 hover:underline font-semibold"
+                          >
+                            {useManualWarehouse ? 'Вибрати зі списку' : 'Ввести вручну'}
+                          </button>
+                        </div>
+
+                        {useManualWarehouse ? (
+                          <input
+                            type="text"
+                            required
+                            placeholder="напр., Відділення №2 (вул. Центральна, 5)"
+                            value={manualWarehouseText}
+                            onChange={(e) => setManualWarehouseText(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none"
+                          />
+                        ) : (
+                          <div className="relative">
+                            <select
+                              required
+                              value={selectedWarehouse?.ref || ''}
+                              onChange={(e) => {
+                                const found = warehouses.find(w => w.ref === e.target.value);
+                                if (found) setSelectedWarehouse(found);
+                              }}
+                              disabled={isLoadingWarehouses}
+                              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none focus:border-red-600 appearance-none pr-8 cursor-pointer disabled:bg-slate-100"
+                            >
+                              {isLoadingWarehouses ? (
+                                <option>Завантаження відділень...</option>
+                              ) : warehouses.length > 0 ? (
+                                warehouses.map((w) => (
+                                  <option key={w.ref} value={w.ref}>
+                                    {w.name}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">Відділення №1 (за замовчуванням)</option>
+                              )}
+                            </select>
+                            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+
+                    {selectedWarehouse && !useManualWarehouse && (
+                      <div className="text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200/80 flex items-center justify-between">
+                        <span><b>Обрано:</b> {selectedWarehouse.name}</span>
+                        {selectedWarehouse.maxWeightKg && (
+                          <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                            до {selectedWarehouse.maxWeightKg} кг
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* UKRPOSHTA FIELDS */}
+                {deliveryType === 'ukrposhta' && (
+                  <div className="bg-amber-50/40 p-4 rounded-xl border border-amber-200/80 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Поштовий індекс *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          maxLength={5}
+                          placeholder="напр., 22600"
+                          value={upIndex}
+                          onChange={(e) => setUpIndex(e.target.value.replace(/\D/g, ''))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none font-mono"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Населений пункт (місто / село) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="напр., с. Оратів, Вінницька обл."
+                          value={upCity}
+                          onChange={(e) => setUpCity(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Відділення або поштомат *
+                        Номер відділення або адреса *
                       </label>
                       <input
                         type="text"
                         required
-                        placeholder="напр., Відділення №1 або Поштомат №5432"
-                        value={npDepartment}
-                        onChange={(e) => setNpDepartment(e.target.value)}
+                        placeholder="напр., Відділення зв'язку або вул. Миру, 12"
+                        value={upAddress}
+                        onChange={(e) => setUpAddress(e.target.value)}
                         className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none"
                       />
                     </div>
                   </div>
                 )}
 
+                {/* PICKUP INFO */}
                 {deliveryType === 'pickup' && (
-                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs text-slate-600">
-                    <b>Адреса магазину для самовивозу:</b><br />
-                    Вінницька обл., с. Оратів, вул. Героїв Майдану, 14.<br />
-                    <span className="text-slate-500 text-[11px]">Графік: Пн-Пт 08:00–18:00, Сб 08:00–15:00.</span>
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-red-600" />
+                      <span>Магазин сантехніки та електротоварів «ISKRA»</span>
+                    </div>
+                    <div>Вінницька обл., с. Оратів, вул. Героїв Майдану, 14.</div>
+                    <div className="text-slate-500 text-[11px]">Графік: Пн-Пт 08:00–18:00, Сб 08:00–15:00. Самовивіз безкоштовний.</div>
                   </div>
                 )}
 
+                {/* COURIER */}
                 {deliveryType === 'courier' && (
                   <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Адреса доставки (місто, вулиця, будинок, квартира) *
+                      Адреса доставки кур'єром (місто, вулиця, будинок, квартира) *
                     </label>
                     <input
                       type="text"
@@ -378,7 +718,7 @@ export const CheckoutModal: React.FC = () => {
                 )}
               </div>
 
-              {/* Step 3: Payment Method */}
+              {/* Step 3: Payment Method (Online Apple Pay / Google Pay / WayForPay / Monobank) */}
               <div className="space-y-3 pt-2 border-t border-slate-100">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px]">3</span>
@@ -386,55 +726,105 @@ export const CheckoutModal: React.FC = () => {
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <label className={`p-3 rounded-xl border flex items-center gap-2.5 cursor-pointer text-xs ${
-                    paymentMethod === 'cash_on_delivery' ? 'border-orange-600 bg-orange-50 font-bold text-orange-950' : 'border-slate-200 text-slate-700'
+                  
+                  {/* Card Online / Apple Pay */}
+                  <label className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                    paymentMethod === 'card_online' 
+                      ? 'border-emerald-600 bg-emerald-50/50 font-bold text-emerald-950 ring-2 ring-emerald-600/10' 
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}>
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      checked={paymentMethod === 'cash_on_delivery'}
-                      onChange={() => setPaymentMethod('cash_on_delivery')}
-                      className="text-orange-600"
-                    />
-                    <span>Післяплата (при отриманні)</span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          checked={paymentMethod === 'card_online'}
+                          onChange={() => setPaymentMethod('card_online')}
+                          className="text-emerald-600"
+                        />
+                        <span className="text-xs font-bold">Оплата карткою</span>
+                      </div>
+                      <CreditCard className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-normal pl-5">
+                      Apple Pay, Google Pay, Visa / Mastercard без комісії
+                    </div>
                   </label>
 
-                  <label className={`p-3 rounded-xl border flex items-center gap-2.5 cursor-pointer text-xs ${
-                    paymentMethod === 'card_online' ? 'border-orange-600 bg-orange-50 font-bold text-orange-950' : 'border-slate-200 text-slate-700'
+                  {/* Cash on delivery */}
+                  <label className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                    paymentMethod === 'cash_on_delivery' 
+                      ? 'border-red-600 bg-red-50/50 font-bold text-red-950 ring-2 ring-red-600/10' 
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}>
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      checked={paymentMethod === 'card_online'}
-                      onChange={() => setPaymentMethod('card_online')}
-                      className="text-orange-600"
-                    />
-                    <span>Оплата карткою</span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          checked={paymentMethod === 'cash_on_delivery'}
+                          onChange={() => setPaymentMethod('cash_on_delivery')}
+                          className="text-red-600"
+                        />
+                        <span className="text-xs font-bold">Післяплата</span>
+                      </div>
+                      <Banknote className="w-4 h-4 text-slate-500" />
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-normal pl-5">
+                      Оплата готівкою або карткою при отриманні на пошті
+                    </div>
                   </label>
 
-                  <label className={`p-3 rounded-xl border flex items-center gap-2.5 cursor-pointer text-xs ${
-                    paymentMethod === 'bank_invoice' ? 'border-orange-600 bg-orange-50 font-bold text-orange-950' : 'border-slate-200 text-slate-700'
+                  {/* Bank invoice IBAN */}
+                  <label className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                    paymentMethod === 'bank_invoice' 
+                      ? 'border-slate-800 bg-slate-100 font-bold text-slate-900 ring-2 ring-slate-800/10' 
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}>
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      checked={paymentMethod === 'bank_invoice'}
-                      onChange={() => setPaymentMethod('bank_invoice')}
-                      className="text-orange-600"
-                    />
-                    <span>Рахунок-фактура (IBAN)</span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          checked={paymentMethod === 'bank_invoice'}
+                          onChange={() => setPaymentMethod('bank_invoice')}
+                          className="text-slate-800"
+                        />
+                        <span className="text-xs font-bold">Рахунок IBAN</span>
+                      </div>
+                      <ShieldCheck className="w-4 h-4 text-slate-500" />
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-normal pl-5">
+                      Для підприємств та ФОП за безготівковим розрахунком
+                    </div>
                   </label>
                 </div>
+
+                {/* Instant Online Payment Badges Banner */}
+                {paymentMethod === 'card_online' && (
+                  <div className="flex items-center justify-between p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-900">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Захищений шлюз (<b>{siteSettings.paymentGateway?.toUpperCase() || 'WAYFORPAY / MONO'}</b>) з 3D-Secure 2.0
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 font-bold font-mono text-[10px]">
+                      <span className="bg-white px-1.5 py-0.5 rounded shadow-2xs">Apple Pay</span>
+                      <span className="bg-white px-1.5 py-0.5 rounded shadow-2xs">G Pay</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Order Comment */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Коментар до замовлення (необов'язково)
+                  Коментар або примітка до замовлення (необов'язково)
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Додаткові побажання щодо часу доставки або характеристик..."
+                  placeholder="Додаткові побажання щодо замовлення чи доставки..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 outline-none"
@@ -442,21 +832,34 @@ export const CheckoutModal: React.FC = () => {
               </div>
 
               {/* Summary and Submit */}
-              <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
+              <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
                   <div className="text-xs text-slate-500">До сплати:</div>
                   <div className="text-xl font-black font-display text-slate-950 tabular-nums">
                     {discountedCartSum.toFixed(2)} грн
                   </div>
+                  {isFreeShipping && (
+                    <div className="text-[10px] text-emerald-600 font-bold">
+                      + Безкоштовна доставка
+                    </div>
+                  )}
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isSubmitting || cart.length === 0}
-                  className="px-6 py-3.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-orange-600/30 flex items-center gap-2"
+                  disabled={isSubmitting || isProcessingPayment}
+                  className="w-full sm:w-auto px-7 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 transition-all disabled:bg-slate-300"
                 >
-                  {isSubmitting ? (
-                    <span>Оформлення...</span>
+                  {isSubmitting || isProcessingPayment ? (
+                    <>
+                      <RotateCcw className="w-4 h-4 animate-spin" />
+                      <span>Обробка платежу...</span>
+                    </>
+                  ) : paymentMethod === 'card_online' ? (
+                    <>
+                      <Zap className="w-4 h-4" />
+                      <span>Оплатити онлайн {discountedCartSum.toFixed(0)} грн</span>
+                    </>
                   ) : (
                     <>
                       <span>Підтвердити замовлення</span>

@@ -426,6 +426,15 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
         }
       }
 
+      // Sync weekly deal
+      if (storeData.weeklyDeal) {
+        try {
+          await setDoc(doc(firestore, 'settings', 'weeklyDeal'), storeData.weeklyDeal, { merge: true });
+        } catch {
+          // Ignore
+        }
+      }
+
       // Sync categories
       if (storeData.categoriesTree) {
         try {
@@ -587,6 +596,15 @@ export async function fetchStoreFromFirebase(config: FirebaseConnectionConfig): 
         const designSnap = await getDoc(doc(firestore, 'settings', 'design'));
         if (designSnap.exists()) {
           result.headerDesign = designSnap.data();
+        }
+      } catch {
+        // Quietly catch
+      }
+
+      try {
+        const dealSnap = await getDoc(doc(firestore, 'settings', 'weeklyDeal'));
+        if (dealSnap.exists()) {
+          result.weeklyDeal = dealSnap.data();
         }
       } catch {
         // Quietly catch
