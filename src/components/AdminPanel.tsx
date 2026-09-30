@@ -233,11 +233,19 @@ const StockFilterDropdown: React.FC<StockFilterDropdownProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const getUkPositionsWord = (n: number) => {
+    const m10 = n % 10;
+    const m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return 'позиція';
+    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return 'позиції';
+    return 'позицій';
+  };
+
   const options: Array<{ id: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock'; label: string }> = [
-    { id: 'all', label: `Всі товари - [ ${totalProducts} поз. ]` },
-    { id: 'in_stock', label: `В наявності - [ ${inStockCount} поз. ]` },
-    { id: 'low_stock', label: `⚠️ Закінчуються - [ ${lowStockCount} поз. ]` },
-    { id: 'out_of_stock', label: `❌ Немає в наявності - [ ${outOfStockCount} поз. ]` }
+    { id: 'all', label: `Всі товари - [ ${totalProducts} ${getUkPositionsWord(totalProducts)} ]` },
+    { id: 'in_stock', label: `В наявності - [ ${inStockCount} ${getUkPositionsWord(inStockCount)} ]` },
+    { id: 'low_stock', label: `⚠️ Закінчуються - [ ${lowStockCount} ${getUkPositionsWord(lowStockCount)} ]` },
+    { id: 'out_of_stock', label: `❌ Немає в наявності - [ ${outOfStockCount} ${getUkPositionsWord(outOfStockCount)} ]` }
   ];
 
   const selectedOption = options.find(o => o.id === value) || options[0];
@@ -1317,7 +1325,16 @@ export const AdminPanel: React.FC = () => {
                 }}
                 className="text-amber-700 font-bold bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 transition-colors cursor-pointer"
               >
-                ⚠️ {totalCriticalStockCount} потребують закупки
+                ⚠️ {totalCriticalStockCount} {
+                  (() => {
+                    const n = totalCriticalStockCount;
+                    const m10 = n % 10;
+                    const m100 = n % 100;
+                    const pos = (m10 === 1 && m100 !== 11) ? 'позиція' : (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) ? 'позиції' : 'позицій';
+                    const verb = (m10 === 1 && m100 !== 11) ? 'потребує' : 'потребують';
+                    return `${pos} ${verb}`;
+                  })()
+                } закупки
               </button>
             ) : (
               <span className="text-emerald-600 font-medium">✓ Всі в достатній кількості</span>
