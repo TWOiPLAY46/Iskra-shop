@@ -924,7 +924,7 @@ export const AdminPanel: React.FC = () => {
     setPPrice(250);
     setPUnit('грн/шт');
     setPDesc('');
-    setPImage('/src/assets/images/product_circuit_breaker_1790671628425.jpg');
+    setPImage('');
     setProductImageUploadError(null);
     setProductImageTab('upload');
     setIsProductModalOpen(true);
@@ -4674,17 +4674,11 @@ export const AdminPanel: React.FC = () => {
                         />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-slate-900 truncate">
-                            {pImage.startsWith('data:') ? '💻 Фото завантажено з ПК' : '🔗 Посилання на фото'}
-                          </span>
-                          <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-md flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>Підготовлено до збереження в БД</span>
-                          </span>
-                        </div>
+                        <span className="text-xs font-bold text-slate-900 block truncate">
+                          Фото товару готове
+                        </span>
                         <p className="text-[11px] text-slate-500 truncate mt-0.5 font-mono">
-                          {pImage.startsWith('data:') ? `Оптимізований Base64 (довжина: ~${Math.round(pImage.length / 1024)} КБ)` : pImage}
+                          {pImage.startsWith('data:') ? `Base64 (~${Math.round(pImage.length / 1024)} КБ)` : pImage}
                         </p>
                       </div>
                       
