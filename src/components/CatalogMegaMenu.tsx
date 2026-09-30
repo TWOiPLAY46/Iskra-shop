@@ -7,7 +7,9 @@ import {
   Zap, 
   Flame, 
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Wrench,
+  Home
 } from 'lucide-react';
 
 interface CatalogMegaMenuProps {
@@ -64,7 +66,7 @@ export const CatalogMegaMenu: React.FC<CatalogMegaMenuProps> = ({ isOpen, onClos
                 КАТАЛОГ
               </span>
               <h2 className="text-base sm:text-lg font-bold font-display">
-                Категорії сантехніки та електротоварів
+                Категорії товарів
               </h2>
             </div>
 
@@ -93,13 +95,19 @@ export const CatalogMegaMenu: React.FC<CatalogMegaMenuProps> = ({ isOpen, onClos
                 <p className="text-xs text-slate-400 mt-1">Створіть категорії в панелі керування ISKRA</p>
               </div>
             ) : (
-              <div className={`grid grid-cols-1 ${Object.keys(categoriesTree).length > 1 ? 'md:grid-cols-2 lg:grid-cols-2' : ''} gap-8 divide-y md:divide-y-0 ${Object.keys(categoriesTree).length > 1 ? 'md:divide-x' : ''} divide-slate-100`}>
-                {Object.entries(categoriesTree).map(([mainCatName, mainObj], idx) => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {Object.entries(categoriesTree).map(([mainCatName, mainObj]) => {
                   const directLeaves = Array.isArray(mainObj?._leaves) ? mainObj._leaves : [];
                   const subCategories = Object.entries(mainObj || {}).filter(([k]) => k !== '_leaves');
 
                   const getIcon = (name: string) => {
                     const lower = name.toLowerCase();
+                    if (lower.includes('інструмент') || lower.includes('обладнан')) {
+                      return <Wrench className="w-5 h-5 text-emerald-600" />;
+                    }
+                    if (lower.includes('господар') || lower.includes('хоз') || lower.includes('дім')) {
+                      return <Home className="w-5 h-5 text-indigo-600" />;
+                    }
                     if (lower.includes('сант') || lower.includes('вод') || lower.includes('труб')) {
                       return <Droplets className="w-5 h-5 text-blue-600" />;
                     }
@@ -113,28 +121,28 @@ export const CatalogMegaMenu: React.FC<CatalogMegaMenuProps> = ({ isOpen, onClos
                   };
 
                   return (
-                    <div key={mainCatName} className={`space-y-5 ${idx > 0 ? 'md:pl-8 pt-6 md:pt-0' : ''}`}>
-                      <div className="flex items-center justify-between">
+                    <div key={mainCatName} className="space-y-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-200/80 flex flex-col justify-start">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
                         <button
                           onClick={() => handleSelectCategory(mainCatName)}
-                          className="flex items-center gap-2.5 text-base sm:text-lg font-black text-slate-900 hover:text-red-600 transition-colors group text-left"
+                          className="flex items-center gap-2 text-base font-black text-slate-900 hover:text-red-600 transition-colors group text-left"
                         >
-                          <div className="p-2 rounded-xl bg-slate-100 group-hover:bg-red-50 group-hover:scale-105 transition-all">
+                          <div className="p-1.5 rounded-xl bg-white shadow-2xs group-hover:scale-105 transition-all">
                             {getIcon(mainCatName)}
                           </div>
-                          <span>{mainCatName}</span>
-                          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                          <span className="leading-tight">{mainCatName}</span>
+                          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform shrink-0" />
                         </button>
                       </div>
 
                       {/* Direct Leaves (if any) */}
                       {directLeaves.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pl-2">
+                        <div className="flex flex-wrap gap-1.5">
                           {directLeaves.map((leaf) => (
                             <button
                               key={leaf}
                               onClick={() => handleSelectCategory(leaf)}
-                              className="text-[11px] font-medium bg-amber-50/80 hover:bg-red-50 text-amber-900 hover:text-red-600 px-2.5 py-1 rounded-lg border border-amber-200/70 transition-colors"
+                              className="text-[11px] font-medium bg-amber-50/90 hover:bg-red-50 text-amber-900 hover:text-red-600 px-2 py-0.5 rounded-lg border border-amber-200/70 transition-colors text-left"
                             >
                               {leaf}
                             </button>
@@ -143,29 +151,29 @@ export const CatalogMegaMenu: React.FC<CatalogMegaMenuProps> = ({ isOpen, onClos
                       )}
 
                       {/* Subcategories */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-2">
+                      <div className="space-y-3">
                         {subCategories.map(([subCatName, leaves]) => {
                           const items = Array.isArray(leaves) ? leaves : [];
 
                           return (
-                            <div key={subCatName} className="space-y-1.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                            <div key={subCatName} className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-100 shadow-2xs">
                               <button
                                 onClick={() => handleSelectCategory(subCatName)}
                                 className="font-bold text-xs text-slate-900 hover:text-red-600 text-left w-full flex items-center justify-between"
                               >
-                                <span>{subCatName}</span>
+                                <span className="line-clamp-1">{subCatName}</span>
                                 <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
                               </button>
                               {items.length > 0 && (
-                                <ul className="space-y-1 pt-1">
+                                <ul className="space-y-0.5 pt-1">
                                   {items.map((leaf) => (
                                     <li key={leaf}>
                                       <button
                                         onClick={() => handleSelectCategory(leaf)}
-                                        className="text-[11px] text-slate-500 hover:text-red-600 transition-colors text-left flex items-center gap-1.5 py-0.5"
+                                        className="text-[11px] text-slate-500 hover:text-red-600 transition-colors text-left flex items-center gap-1.5 py-0.5 w-full truncate"
                                       >
-                                        <span className="w-1 h-1 rounded-full bg-slate-300" />
-                                        <span>{leaf}</span>
+                                        <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                                        <span className="truncate">{leaf}</span>
                                       </button>
                                     </li>
                                   ))}

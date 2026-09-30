@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react';
 import { initialCategoriesTree, initialHeaderDesign, initialProducts, initialSiteSettings, initialWeeklyDeal } from '../data/initialData';
+import { getSafeImageUrl } from '../utils/assetImages';
 import { initialReviews } from '../data/productReviews';
 import { 
   CartItem, 
@@ -100,6 +101,7 @@ interface StoreContextType {
   // Products CRUD
   saveProduct: (product: Product) => void;
   deleteProduct: (productId: string) => void;
+  clearAllProductPhotos: () => void;
   updateProductStock: (productId: string, newStock: number) => void;
   updateProductPrice: (productId: string, newPrice: number) => void;
   bulkAdjustPrices: (percentDelta: number) => void;
@@ -166,70 +168,88 @@ const StoreContext = createContext<StoreContextType | null>(null);
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Products
   const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('iskra_products_react_v3') || localStorage.getItem('iskra_products_react');
+    const deletedList: string[] = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('iskra_deleted_product_ids_v1') || '[]');
+      } catch {
+        return [];
+      }
+    })();
+    const deletedSet = new Set(deletedList);
+
+    const saved = localStorage.getItem('iskra_products_react_v4') || localStorage.getItem('iskra_products_react_v3') || localStorage.getItem('iskra_products_react');
+    let parsed: Product[] = [];
     if (saved) {
       try {
-        const parsed: Product[] = JSON.parse(saved);
-        // Merge in any newly defined initial products (like accessories) and image URLs
-        const merged = [...parsed];
-        initialProducts.forEach(initP => {
-          const idx = merged.findIndex(p => p.id === initP.id);
-          if (idx === -1) {
-            merged.push(initP);
-          } else {
-            if (!merged[idx].brand && initP.brand) {
-              merged[idx] = { ...merged[idx], brand: initP.brand };
-            }
-            if (!merged[idx].image && initP.image) {
-              merged[idx] = { ...merged[idx], image: initP.image };
-            }
-          }
-        });
-        // Ensure every product has a valid unique ID
-        return merged.map((p, idx) => ({
-          ...p,
-          id: p.id && String(p.id).trim() !== '' ? String(p.id).trim() : `prod-auto-${idx}`
-        }));
+        parsed = JSON.parse(saved);
       } catch (e) {
         console.error(e);
       }
     }
-    return initialProducts;
+
+    if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+      return parsed
+        .filter(p => p && p.id && !deletedSet.has(p.id))
+        .map((p, idx) => ({
+          ...p,
+          id: p.id && String(p.id).trim() !== '' ? String(p.id).trim() : `prod-auto-${idx}`,
+          image: p.image !== undefined && p.image !== null ? p.image : '',
+          stock: p.stock !== undefined && p.stock !== null ? p.stock : 0
+        }));
+    }
+
+    return initialProducts
+      .filter(p => !deletedSet.has(p.id))
+      .map((p, idx) => ({
+        ...p,
+        id: p.id && String(p.id).trim() !== '' ? String(p.id).trim() : `prod-auto-${idx}`,
+        image: p.image !== undefined && p.image !== null ? p.image : '',
+        stock: p.stock !== undefined && p.stock !== null ? p.stock : 15
+      }));
   });
+
+  // Sync to localStorage with v4 key
+  useEffect(() => {
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(products));
+  }, [products]);
 
   // Helper to normalize category tree structure
   const normalizeCategoriesTree = (raw: any): CategoryTree => {
-    if (!raw || typeof raw !== 'object') return initialCategoriesTree;
-    const result: CategoryTree = {};
-    for (const [mainKey, mainVal] of Object.entries(raw)) {
-      if (!mainKey || mainKey.startsWith('_')) continue;
-      if (typeof mainVal !== 'object' || mainVal === null) {
+    // If raw contains valid categories, respect the user's stored category state
+    if (raw && typeof raw === 'object' && Object.keys(raw).some(k => !k.startsWith('_'))) {
+      const result: CategoryTree = {};
+      for (const [mainKey, mainVal] of Object.entries(raw)) {
+        if (!mainKey || mainKey.startsWith('_')) continue;
+        if (typeof mainVal !== 'object' || mainVal === null) continue;
+
         result[mainKey] = { _leaves: [] };
-        continue;
-      }
-      const cleanMain: Record<string, string[]> = { _leaves: [] };
-      for (const [subKey, subVal] of Object.entries(mainVal as Record<string, any>)) {
-        if (subKey === '_exists' || subKey === '_created') continue;
-        if (subKey === '_leaves') {
-          cleanMain._leaves = Array.isArray(subVal) ? subVal.filter(Boolean) : [];
-        } else if (Array.isArray(subVal)) {
-          cleanMain[subKey] = subVal.filter(Boolean);
-        } else if (typeof subVal === 'object' && subVal !== null) {
-          cleanMain[subKey] = Object.values(subVal).filter(Boolean) as string[];
-        } else {
-          cleanMain[subKey] = [];
+        for (const [subKey, subVal] of Object.entries(mainVal as Record<string, any>)) {
+          if (subKey === '_exists' || subKey === '_created') continue;
+          if (subKey === '_leaves') {
+            const incomingLeaves = Array.isArray(subVal) ? subVal.filter(Boolean) : [];
+            result[mainKey]._leaves = Array.from(new Set(incomingLeaves));
+          } else if (Array.isArray(subVal)) {
+            result[mainKey][subKey] = Array.from(new Set(subVal.filter(Boolean)));
+          } else if (typeof subVal === 'object' && subVal !== null) {
+            result[mainKey][subKey] = Array.from(new Set(Object.values(subVal).filter(Boolean) as string[]));
+          }
         }
       }
-      result[mainKey] = cleanMain;
+      return result;
     }
-    return Object.keys(result).length > 0 ? result : initialCategoriesTree;
+
+    return JSON.parse(JSON.stringify(initialCategoriesTree));
   };
 
   // Categories Tree
   const [categoriesTree, setCategoriesTree] = useState<CategoryTree>(() => {
-    const saved = localStorage.getItem('iskra_categories_tree_react');
+    const saved = localStorage.getItem('iskra_categories_tree_react_v2') || localStorage.getItem('iskra_categories_tree_react');
     if (saved) {
-      try { return normalizeCategoriesTree(JSON.parse(saved)); } catch (e) { console.error(e); }
+      try { 
+        return normalizeCategoriesTree(JSON.parse(saved)); 
+      } catch (e) { 
+        console.error(e); 
+      }
     }
     return initialCategoriesTree;
   });
@@ -547,8 +567,32 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const cloudProds = Array.isArray(cloudData.products) 
             ? cloudData.products 
             : (cloudData.products && typeof cloudData.products === 'object' ? Object.values(cloudData.products) : null);
-          if (cloudProds && cloudProds.length > 0) setProducts(cloudProds as Product[]);
-          if (cloudData.categoriesTree) setCategoriesTree(normalizeCategoriesTree(cloudData.categoriesTree));
+          const cloudDeleted: string[] = Array.isArray(cloudData.deletedProductIds) 
+            ? cloudData.deletedProductIds 
+            : (cloudData.deletedProductIds && typeof cloudData.deletedProductIds === 'object' ? Object.values(cloudData.deletedProductIds) : []);
+          const localDeleted: string[] = (() => {
+            try { return JSON.parse(localStorage.getItem('iskra_deleted_product_ids_v1') || '[]'); } catch { return []; }
+          })();
+          const allDeleted = Array.from(new Set([...cloudDeleted, ...localDeleted]));
+          localStorage.setItem('iskra_deleted_product_ids_v1', JSON.stringify(allDeleted));
+          const deletedSet = new Set(allDeleted);
+
+          if (cloudProds && cloudProds.length > 0) {
+            // Keep cloud products exactly as saved in database (including empty images)
+            const cleanCloudProds = (cloudProds as Product[])
+              .filter(p => p && p.id && !deletedSet.has(p.id))
+              .map(p => ({
+                ...p,
+                image: p.image !== undefined && p.image !== null ? p.image : '',
+                stock: p.stock !== undefined && p.stock !== null ? p.stock : 0
+              }));
+            setProducts(cleanCloudProds);
+            localStorage.setItem('iskra_products_react_v4', JSON.stringify(cleanCloudProds));
+          }
+          
+          // Normalize and load categories tree
+          const mergedCategories = normalizeCategoriesTree(cloudData.categoriesTree);
+          setCategoriesTree(mergedCategories);
           
           const cloudOrders = Array.isArray(cloudData.orders) 
             ? cloudData.orders 
@@ -565,10 +609,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
             setClients(clean);
           }
-          const cloudReviews = Array.isArray(cloudData.reviews) 
-            ? cloudData.reviews 
-            : (cloudData.reviews && typeof cloudData.reviews === 'object' ? Object.values(cloudData.reviews) : null);
-          if (cloudReviews && cloudReviews.length > 0) setReviews(cloudReviews as ProductReview[]);
+          if (cloudData.reviews && Array.isArray(cloudData.reviews)) setReviews(cloudData.reviews as ProductReview[]);
           if (cloudData.siteSettings) setSiteSettings((prev) => ({ ...prev, ...cloudData.siteSettings }));
           if (cloudData.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...cloudData.headerDesign }));
           if (cloudData.weeklyDeal) setWeeklyDeal((prev) => ({ ...prev, ...cloudData.weeklyDeal }));
@@ -599,10 +640,29 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const unsubscribe = subscribeToStore(firebaseConfig, (data) => {
       if (data) {
         setDbStatus('connected');
+        const cloudDeleted: string[] = Array.isArray(data.deletedProductIds) 
+          ? data.deletedProductIds 
+          : (data.deletedProductIds && typeof data.deletedProductIds === 'object' ? Object.values(data.deletedProductIds) : []);
+        const localDeleted: string[] = (() => {
+          try { return JSON.parse(localStorage.getItem('iskra_deleted_product_ids_v1') || '[]'); } catch { return []; }
+        })();
+        const allDeleted = Array.from(new Set([...cloudDeleted, ...localDeleted]));
+        const deletedSet = new Set(allDeleted);
+
         const liveProds = Array.isArray(data.products) 
           ? data.products 
           : (data.products && typeof data.products === 'object' ? Object.values(data.products) : null);
-        if (liveProds && liveProds.length > 0) setProducts(liveProds as Product[]);
+        if (liveProds && liveProds.length > 0) {
+          const cleanLive = (liveProds as Product[])
+            .filter(p => p && p.id && !deletedSet.has(p.id))
+            .map(p => ({
+              ...p,
+              image: p.image !== undefined && p.image !== null ? p.image : '',
+              stock: p.stock !== undefined && p.stock !== null ? p.stock : 0
+            }));
+          setProducts(cleanLive);
+          localStorage.setItem('iskra_products_react_v4', JSON.stringify(cleanLive));
+        }
         if (data.categoriesTree && typeof data.categoriesTree === 'object') setCategoriesTree(normalizeCategoriesTree(data.categoriesTree));
         
         const liveOrders = Array.isArray(data.orders) 
@@ -744,6 +804,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (parsed.headerDesign) setHeaderDesign(parsed.headerDesign);
       if (parsed.firebaseConfig) setFirebaseConfig(parsed.firebaseConfig);
       showToast('Резервну копію успішно відновлено!', 'success');
+      const conf = parsed.firebaseConfig || firebaseConfig;
+      if (conf.enabled) {
+        pushStoreToFirebase(conf, {
+          products: parsed.products || products,
+          categoriesTree: parsed.categoriesTree || categoriesTree,
+          orders: parsed.orders || orders,
+          clients: parsed.clients || clients,
+          reviews: parsed.reviews || reviews,
+          siteSettings: parsed.siteSettings || siteSettings,
+          headerDesign: parsed.headerDesign || headerDesign,
+          lastSyncTimestamp: Date.now()
+        }).catch(() => {});
+      }
       return true;
     } catch (err) {
       showToast('Невірний формат файлу резервної копії JSON', 'error');
@@ -988,6 +1061,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       next = [product, ...products];
     }
     setProducts(next);
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
+
+    // If product was previously marked deleted, unmark it
+    let currentDeleted: string[] = [];
+    try {
+      currentDeleted = JSON.parse(localStorage.getItem('iskra_deleted_product_ids_v1') || '[]');
+      if (currentDeleted.includes(product.id)) {
+        currentDeleted = currentDeleted.filter(id => id !== product.id);
+        localStorage.setItem('iskra_deleted_product_ids_v1', JSON.stringify(currentDeleted));
+      }
+    } catch {}
 
     // Auto-register category hierarchy into categoriesTree if new
     let updatedTree = { ...categoriesTree };
@@ -1035,6 +1119,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       saveProductDirectlyToDatabase(firebaseConfig, product);
       pushStoreToFirebase(firebaseConfig, { 
         products: next, 
+        deletedProductIds: currentDeleted,
         categoriesTree: treeChanged ? updatedTree : categoriesTree,
         lastSyncTimestamp: Date.now() 
       });
@@ -1044,16 +1129,46 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteProduct = (productId: string) => {
     const next = products.filter((p) => p.id !== productId);
     setProducts(next);
-    showToast('Товар видалено з каталогу', 'info');
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
+
+    // Record in deletedProductIds
+    let currentDeleted: string[] = [];
+    try {
+      currentDeleted = JSON.parse(localStorage.getItem('iskra_deleted_product_ids_v1') || '[]');
+    } catch {}
+    if (!currentDeleted.includes(productId)) {
+      currentDeleted.push(productId);
+      localStorage.setItem('iskra_deleted_product_ids_v1', JSON.stringify(currentDeleted));
+    }
+
+    showToast('Товар видалено з каталогу та бази даних', 'info');
     if (firebaseConfig.enabled) {
       deleteProductDirectlyFromDatabase(firebaseConfig, productId);
-      pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+      pushStoreToFirebase(firebaseConfig, { 
+        products: next, 
+        deletedProductIds: currentDeleted,
+        lastSyncTimestamp: Date.now() 
+      });
+    }
+  };
+
+  const clearAllProductPhotos = () => {
+    const next = products.map((p) => ({ ...p, image: '' }));
+    setProducts(next);
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
+    showToast('Всі фото товарів видалено та збережено!', 'success');
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, { 
+        products: next, 
+        lastSyncTimestamp: Date.now() 
+      });
     }
   };
 
   const updateProductStock = (productId: string, newStock: number) => {
     const next = products.map((p) => (p.id === productId ? { ...p, stock: Math.max(0, newStock) } : p));
     setProducts(next);
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
     }
@@ -1062,6 +1177,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateProductPrice = (productId: string, newPrice: number) => {
     const next = products.map((p) => (p.id === productId ? { ...p, price: Math.max(0, newPrice) } : p));
     setProducts(next);
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
     }
@@ -1074,6 +1190,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       price: Math.max(1, Math.round(p.price * factor * 10) / 10)
     }));
     setProducts(next);
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
     showToast(`Ціни всіх товарів змінено на ${percentDelta > 0 ? '+' : ''}${percentDelta}%`, 'success');
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
@@ -1083,6 +1200,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const bulkAdjustStock = (newStockForAll: number) => {
     const next = products.map((p) => ({ ...p, stock: Math.max(0, newStockForAll) }));
     setProducts(next);
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
     showToast(`Залишки всіх товарів встановлено на ${newStockForAll}`, 'success');
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
@@ -1090,12 +1208,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetDefaultCatalog = () => {
+    localStorage.removeItem('iskra_deleted_product_ids_v1');
     setProducts(initialProducts);
     setCategoriesTree(initialCategoriesTree);
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(initialProducts));
+    localStorage.setItem('iskra_categories_tree_react', JSON.stringify(initialCategoriesTree));
     showToast('Каталог скинуто до початкових товарів', 'info');
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { 
         products: initialProducts, 
+        deletedProductIds: [],
         categoriesTree: initialCategoriesTree,
         lastSyncTimestamp: Date.now() 
       });
@@ -1143,7 +1265,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const price = parseFloat(row[6]) || 0;
         const unit = row[7] ? row[7].replace(/^"|"$/g, '') : 'грн/шт';
         const desc = row[8] ? row[8].replace(/^"|"$/g, '') : '';
-        const image = row[9] ? row[9].replace(/^"|"$/g, '') : '/src/assets/images/hero_iskra_store_1790671594961.jpg';
+        const image = row[9] ? row[9].replace(/^"|"$/g, '').trim() : '';
 
         newItems.push({ id, name, category, badge, sku, stock, price, unit, desc, image });
         imported++;
@@ -1531,6 +1653,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         clearAllOrders,
         saveProduct,
         deleteProduct,
+        clearAllProductPhotos,
         updateProductStock,
         updateProductPrice,
         bulkAdjustPrices,

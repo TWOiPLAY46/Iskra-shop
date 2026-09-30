@@ -553,6 +553,7 @@ export const AdminPanel: React.FC = () => {
     adminLogout,
     saveProduct,
     deleteProduct,
+    clearAllProductPhotos,
     updateProductStock,
     updateProductPrice,
     bulkAdjustPrices,
@@ -691,6 +692,7 @@ export const AdminPanel: React.FC = () => {
   // Product management states
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const [confirmResetCatalog, setConfirmResetCatalog] = useState(false);
+  const [confirmClearPhotos, setConfirmClearPhotos] = useState(false);
 
   // Category states
   const [newMainCatInput, setNewMainCatInput] = useState('');
@@ -731,6 +733,18 @@ export const AdminPanel: React.FC = () => {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+  useEffect(() => {
+    setSettingsForm(siteSettings);
+  }, [siteSettings]);
+
+  useEffect(() => {
+    setDesignForm(headerDesign);
+  }, [headerDesign]);
+
+  useEffect(() => {
+    setDbConfigForm(firebaseConfig);
+  }, [firebaseConfig]);
 
   // Security Session Guard:
   // On all admin panel pages, if sessionStorage.getItem('isAdminLoggedIn') !== 'true',
@@ -958,15 +972,157 @@ export const AdminPanel: React.FC = () => {
     setIsProductModalOpen(true);
   };
 
+  // Helper to accurately match product to categoriesTree hierarchy
+  const findProductHierarchy = (p: Product) => {
+    let main = p.mainCategory?.trim() || '';
+    let sub = p.subCategory?.trim() || '';
+    let leaf = p.category?.trim() || '';
+
+    // If leaf has slashes, e.g. "Електротовари / Кабельна продукція / Кабель силовий ВВГ"
+    if (leaf.includes('/')) {
+      const parts = leaf.split('/').map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 3) {
+        main = parts[0];
+        sub = parts[1];
+        leaf = parts[2];
+      } else if (parts.length === 2) {
+        main = parts[0];
+        leaf = parts[1];
+      } else if (parts.length === 1) {
+        leaf = parts[0];
+      }
+    }
+
+    const allMainKeys = Object.keys(categoriesTree).filter(k => !k.startsWith('_'));
+
+    // Check if main is known or search tree
+    if (!main || !categoriesTree[main]) {
+      // 1. Search if leaf matches any leaf in any main/sub in categoriesTree
+      for (const m of allMainKeys) {
+        const mObj = categoriesTree[m];
+        if (!mObj || typeof mObj !== 'object') continue;
+
+        for (const [sKey, leaves] of Object.entries(mObj)) {
+          if (sKey === '_leaves' && Array.isArray(leaves)) {
+            if (leaves.some(l => l.toLowerCase() === leaf.toLowerCase())) {
+              return { main: m, sub: '', leaf };
+            }
+          } else if (Array.isArray(leaves)) {
+            if (leaves.some(l => l.toLowerCase() === leaf.toLowerCase())) {
+              return { main: m, sub: sKey, leaf };
+            }
+            if (sKey.toLowerCase() === leaf.toLowerCase()) {
+              return { main: m, sub: sKey, leaf: leaves[0] || leaf };
+            }
+          }
+        }
+
+        if (m.toLowerCase() === leaf.toLowerCase()) {
+          return { main: m, sub: '', leaf };
+        }
+      }
+
+      // 2. Search based on product name / SKU / category keywords
+      const text = `${p.name} ${p.sku} ${leaf}`.toLowerCase();
+      if (
+        text.includes('кабел') ||
+        text.includes('провід') ||
+        text.includes('провод') ||
+        text.includes('ввг') ||
+        text.includes('пвс') ||
+        text.includes('шввп') ||
+        text.includes('гофр') ||
+        text.includes('автомат') ||
+        text.includes('диф') ||
+        text.includes('узо') ||
+        text.includes('реле') ||
+        text.includes('щит') ||
+        text.includes('розетк') ||
+        text.includes('вимикач') ||
+        text.includes('ламп') ||
+        text.includes('led') ||
+        text.includes('прожектор') ||
+        text.includes('світло') ||
+        text.includes('електр') ||
+        text.includes('wago') ||
+        text.includes('клеми') ||
+        text.includes('сіп') ||
+        text.includes('рубильник')
+      ) {
+        main = allMainKeys.find(k => k.toLowerCase().includes('електр')) || 'Електротовари';
+        if (text.includes('кабел') || text.includes('провід') || text.includes('ввг') || text.includes('пвс') || text.includes('шввп') || text.includes('гофр')) {
+          sub = 'Кабельна продукція';
+          if (!leaf || leaf === 'Загальне' || leaf.includes('Сантехніка')) {
+            leaf = 'Кабель силовий ВВГ';
+          }
+        } else if (text.includes('автомат') || text.includes('щит') || text.includes('реле') || text.includes('узо')) {
+          sub = 'Автоматика та щитове обладнання';
+        } else if (text.includes('розетк') || text.includes('вимикач')) {
+          sub = 'Розетки та вимикачі';
+        } else if (text.includes('ламп') || text.includes('led') || text.includes('світл')) {
+          sub = 'Освітлення та LED';
+        }
+      } else if (
+        text.includes('змішувач') ||
+        text.includes('ванн') ||
+        text.includes('душ') ||
+        text.includes('кран') ||
+        text.includes('труб') ||
+        text.includes('фітинг') ||
+        text.includes('сифон') ||
+        text.includes('бойлер') ||
+        text.includes('котел') ||
+        text.includes('радіатор') ||
+        text.includes('унітаз') ||
+        text.includes('мийк') ||
+        text.includes('умивальник') ||
+        text.includes('каналізац') ||
+        text.includes('фільтр') ||
+        text.includes('опаленн') ||
+        text.includes('сантех')
+      ) {
+        main = allMainKeys.find(k => k.toLowerCase().includes('сантех')) || 'Сантехніка та опалення';
+      } else if (
+        text.includes('інструмент') ||
+        text.includes('молоток') ||
+        text.includes('викрутк') ||
+        text.includes('плоскогуб') ||
+        text.includes('дрель') ||
+        text.includes('перфоратор') ||
+        text.includes('болгарк') ||
+        text.includes('рулетк') ||
+        text.includes('рівень')
+      ) {
+        main = allMainKeys.find(k => k.toLowerCase().includes('інструмент')) || 'Інструменти';
+      } else if (
+        text.includes('господар') ||
+        text.includes('відро') ||
+        text.includes('лопат') ||
+        text.includes('рукавич') ||
+        text.includes('мішок') ||
+        text.includes('клей') ||
+        text.includes('піна')
+      ) {
+        main = allMainKeys.find(k => k.toLowerCase().includes('господар')) || 'Господарські товари';
+      } else {
+        main = allMainKeys[0] || 'Сантехніка та опалення';
+      }
+    }
+
+    return { main, sub, leaf };
+  };
+
   // Open modal for edit product
   const handleOpenEditProduct = (p: Product) => {
     setEditingProduct(p);
     setPName(p.name);
     setPBrand(p.brand || '');
-    const initialMain = p.mainCategory || Object.keys(categoriesTree)[0] || '';
-    setPMainCat(initialMain);
-    setPSubCat(p.subCategory || '');
-    setPLeafCat(p.category || '');
+
+    const { main, sub, leaf } = findProductHierarchy(p);
+
+    setPMainCat(main);
+    setPSubCat(sub);
+    setPLeafCat(leaf);
     setPBadge(p.badge);
     setPSku(p.sku);
     setPStock(p.stock);
@@ -975,7 +1131,7 @@ export const AdminPanel: React.FC = () => {
     setPDesc(p.desc);
     setPImage(p.image);
     setProductImageUploadError(null);
-    setProductImageTab(p.image?.startsWith('data:') ? 'upload' : 'upload');
+    setProductImageTab('upload');
     setIsProductModalOpen(true);
   };
 
@@ -996,7 +1152,7 @@ export const AdminPanel: React.FC = () => {
       price: Number(pPrice) || 0,
       unit: pUnit,
       desc: pDesc,
-      image: pImage || '/src/assets/images/hero_iskra_store_1790671594961.jpg',
+      image: pImage ? pImage.trim() : '',
       specs: editingProduct?.specs
     };
 
@@ -2503,6 +2659,39 @@ export const AdminPanel: React.FC = () => {
                   className="hidden"
                 />
               </label>
+
+              {confirmClearPhotos ? (
+                <div className="flex items-center gap-2 animate-in fade-in bg-rose-50 p-2 rounded-xl border border-rose-300 shadow-sm">
+                  <span className="text-xs font-bold text-rose-800">⚠️ Точно видалити всі фото у всіх товарів?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearAllProductPhotos();
+                      setConfirmClearPhotos(false);
+                    }}
+                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
+                  >
+                    Так, видалити
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearPhotos(false)}
+                    className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                  >
+                    Ні
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearPhotos(true)}
+                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Очистити всі фотографії товарів у каталозі та базі даних"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>Видалити всі фото</span>
+                </button>
+              )}
 
               {confirmResetCatalog ? (
                 <div className="flex items-center gap-1.5 animate-in fade-in bg-rose-50 p-1 rounded-xl border border-rose-200">
@@ -4808,11 +4997,10 @@ export const AdminPanel: React.FC = () => {
                         {/* 3. Leaf Category */}
                         <div>
                           <label className="block font-semibold text-slate-700 mb-1">
-                            3. Кінцева категорія *
+                            3. Кінцева категорія
                           </label>
                           <select
                             value={pLeafCat}
-                            required
                             onChange={(e) => {
                               const val = e.target.value;
                               setPLeafCat(val);
@@ -4828,6 +5016,9 @@ export const AdminPanel: React.FC = () => {
                             className="w-full px-2.5 py-2 border border-slate-300 rounded-xl bg-white focus:border-orange-500 outline-none text-xs font-medium cursor-pointer"
                           >
                             <option value="">(Оберіть кінцеву категорію)</option>
+                            {pLeafCat && !availableLeaves.includes(pLeafCat) && (
+                              <option value={pLeafCat}>{pLeafCat}</option>
+                            )}
                             {availableLeaves.map((leaf) => (
                               <option key={leaf} value={leaf}>{leaf}</option>
                             ))}

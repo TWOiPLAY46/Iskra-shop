@@ -329,12 +329,33 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
     if (db) {
       const storeRef = ref(db, 'store');
       await update(storeRef, dataToPush);
+      if (storeData.products !== undefined) {
+        await set(ref(db, 'store/products'), storeData.products);
+      }
+      if (storeData.deletedProductIds !== undefined) {
+        await set(ref(db, 'store/deletedProductIds'), storeData.deletedProductIds);
+      }
       if (storeData.categoriesTree !== undefined) {
         await set(ref(db, 'store/categoriesTree'), storeData.categoriesTree);
         await set(ref(db, 'store/categoriesTreeJson'), JSON.stringify(storeData.categoriesTree));
       }
       if (storeData.clients !== undefined) {
         await set(ref(db, 'store/clients'), storeData.clients);
+      }
+      if (storeData.orders !== undefined) {
+        await set(ref(db, 'store/orders'), storeData.orders);
+      }
+      if (storeData.reviews !== undefined) {
+        await set(ref(db, 'store/reviews'), storeData.reviews);
+      }
+      if (storeData.siteSettings !== undefined) {
+        await set(ref(db, 'store/siteSettings'), storeData.siteSettings);
+      }
+      if (storeData.headerDesign !== undefined) {
+        await set(ref(db, 'store/headerDesign'), storeData.headerDesign);
+      }
+      if (storeData.weeklyDeal !== undefined) {
+        await set(ref(db, 'store/weeklyDeal'), storeData.weeklyDeal);
       }
       rtdbSuccess = true;
     }
@@ -353,6 +374,20 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
       });
       if (res.ok) {
         rtdbSuccess = true;
+      }
+      if (storeData.products !== undefined) {
+        await fetch(`${baseUrl}/store/products.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storeData.products)
+        });
+      }
+      if (storeData.deletedProductIds !== undefined) {
+        await fetch(`${baseUrl}/store/deletedProductIds.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storeData.deletedProductIds)
+        });
       }
       if (storeData.categoriesTree !== undefined) {
         await fetch(`${baseUrl}/store/categoriesTree.json`, {
@@ -373,6 +408,41 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
           body: JSON.stringify(storeData.clients)
         });
       }
+      if (storeData.orders !== undefined) {
+        await fetch(`${baseUrl}/store/orders.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storeData.orders)
+        });
+      }
+      if (storeData.reviews !== undefined) {
+        await fetch(`${baseUrl}/store/reviews.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storeData.reviews)
+        });
+      }
+      if (storeData.siteSettings !== undefined) {
+        await fetch(`${baseUrl}/store/siteSettings.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storeData.siteSettings)
+        });
+      }
+      if (storeData.headerDesign !== undefined) {
+        await fetch(`${baseUrl}/store/headerDesign.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storeData.headerDesign)
+        });
+      }
+      if (storeData.weeklyDeal !== undefined) {
+        await fetch(`${baseUrl}/store/weeklyDeal.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storeData.weeklyDeal)
+        });
+      }
     } catch {
       // Ignore
     }
@@ -389,10 +459,16 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
           storeData.products.forEach((p: Product) => {
             if (p.id) {
               const pRef = doc(firestore, 'products', p.id);
-              batch.set(pRef, p, { merge: true });
+              batch.set(pRef, p, { merge: false });
             }
           });
           await batch.commit();
+
+          await setDoc(doc(firestore, 'catalog', 'products'), {
+            items: storeData.products,
+            count: storeData.products.length,
+            updatedAt: new Date().toISOString()
+          });
         } catch {
           // Ignore Firestore write error
         }
@@ -429,7 +505,7 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
       // Sync weekly deal
       if (storeData.weeklyDeal) {
         try {
-          await setDoc(doc(firestore, 'settings', 'weeklyDeal'), storeData.weeklyDeal, { merge: true });
+          await setDoc(doc(firestore, 'settings', 'weeklyDeal'), storeData.weeklyDeal);
         } catch {
           // Ignore
         }
@@ -441,7 +517,7 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
           await setDoc(doc(firestore, 'categories', 'tree'), {
             tree: storeData.categoriesTree,
             updatedAt: new Date().toISOString()
-          }, { merge: true });
+          });
         } catch {
           // Ignore
         }
@@ -1228,7 +1304,7 @@ export async function saveProductDirectlyToDatabase(
       await setDoc(doc(firestore, 'products', product.id), {
         ...product,
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
       ok = true;
     }
   } catch {}

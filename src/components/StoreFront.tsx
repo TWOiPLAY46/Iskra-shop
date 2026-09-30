@@ -16,12 +16,18 @@ import {
   SlidersHorizontal,
   RotateCcw,
   Banknote,
-  Tag
+  Tag,
+  Droplets,
+  Zap,
+  Wrench,
+  Home,
+  LayoutGrid
 } from 'lucide-react';
 
 export const StoreFront: React.FC = () => {
   const { 
     products, 
+    categoriesTree,
     wishlist,
     showWishlistOnly,
     setShowWishlistOnly,
@@ -237,6 +243,98 @@ export const StoreFront: React.FC = () => {
               {hitsProducts.slice(0, 4).map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Category Quick Navigation Cards */}
+        {!showWishlistOnly && (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base sm:text-lg font-black font-display text-slate-900 tracking-tight flex items-center gap-2">
+                <LayoutGrid className="w-4 h-4 text-red-600" />
+                <span>Основні категорії каталогу</span>
+              </h2>
+              {activeCategory !== 'Усі' && (
+                <button
+                  onClick={() => setActiveCategory('Усі')}
+                  className="text-xs font-bold text-red-600 hover:text-red-700 underline cursor-pointer"
+                >
+                  Скинути (показати всі)
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+              {Object.keys(categoriesTree).map((catName) => {
+                const isActive = activeCategory === catName;
+                const lower = catName.toLowerCase();
+
+                let icon = <Droplets className="w-5 h-5 text-blue-600" />;
+                let bgGradient = "from-blue-50/50 to-white";
+                let borderColor = "hover:border-blue-300";
+
+                if (lower.includes('електр')) {
+                  icon = <Zap className="w-5 h-5 text-amber-500" />;
+                  bgGradient = "from-amber-50/50 to-white";
+                  borderColor = "hover:border-amber-300";
+                } else if (lower.includes('інструмент')) {
+                  icon = <Wrench className="w-5 h-5 text-emerald-600" />;
+                  bgGradient = "from-emerald-50/50 to-white";
+                  borderColor = "hover:border-emerald-300";
+                } else if (lower.includes('господар')) {
+                  icon = <Home className="w-5 h-5 text-indigo-600" />;
+                  bgGradient = "from-indigo-50/50 to-white";
+                  borderColor = "hover:border-indigo-300";
+                }
+
+                // Count items matching this category
+                const catCount = products.filter((p) => 
+                  (p.mainCategory && p.mainCategory.toLowerCase().includes(lower)) ||
+                  p.category.toLowerCase().includes(lower)
+                ).length;
+
+                return (
+                  <button
+                    key={catName}
+                    onClick={() => {
+                      if (activeCategory === catName) {
+                        setActiveCategory('Усі');
+                      } else {
+                        setActiveCategory(catName);
+                      }
+                      setTimeout(() => {
+                        const el = document.getElementById('catalog-products-section');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 50);
+                    }}
+                    className={`p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer relative overflow-hidden group shadow-2xs ${
+                      isActive 
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-red-500 scale-[1.02]' 
+                        : `bg-gradient-to-br ${bgGradient} text-slate-800 border-slate-200/90 ${borderColor} hover:shadow-md hover:-translate-y-0.5`
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`p-2 rounded-xl transition-all ${
+                        isActive ? 'bg-white/10 text-white' : 'bg-white shadow-2xs group-hover:scale-110'
+                      }`}>
+                        {icon}
+                      </div>
+                      <span className={`text-[11px] font-bold font-mono px-2 py-0.5 rounded-full ${
+                        isActive ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {catCount} тов.
+                      </span>
+                    </div>
+
+                    <h3 className={`font-bold text-xs sm:text-sm leading-snug line-clamp-2 ${
+                      isActive ? 'text-white font-black' : 'text-slate-900'
+                    }`}>
+                      {catName}
+                    </h3>
+                  </button>
+                );
+              })}
             </div>
           </section>
         )}
