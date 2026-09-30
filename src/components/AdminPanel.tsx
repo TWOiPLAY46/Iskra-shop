@@ -59,6 +59,8 @@ import {
   MessageSquarePlus,
   Upload,
   Image as ImageIcon,
+  ChevronDown,
+  Check,
   X
 } from 'lucide-react';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
@@ -70,6 +72,207 @@ import {
   clearSecurityAuditLogs,
   generateAntiBotChallenge
 } from '../services/adminSecurityService';
+
+// Inline editable stock component with smooth zero deletion and database sync
+interface InlineStockInputProps {
+  productId: string;
+  stock: number;
+  lowStockThreshold: number;
+  updateProductStock: (id: string, newStock: number) => void;
+}
+
+const InlineStockInput: React.FC<InlineStockInputProps> = ({
+  productId,
+  stock,
+  lowStockThreshold,
+  updateProductStock
+}) => {
+  const [val, setVal] = useState<string>(String(stock));
+
+  useEffect(() => {
+    setVal(String(stock));
+  }, [stock]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (raw === '') {
+      setVal('');
+      updateProductStock(productId, 0);
+      return;
+    }
+    const cleaned = raw.length > 1 ? raw.replace(/^0+(?=\d)/, '') : raw;
+    setVal(cleaned);
+    const num = parseInt(cleaned, 10);
+    if (!isNaN(num) && num >= 0) {
+      updateProductStock(productId, num);
+    }
+  };
+
+  const handleBlur = () => {
+    if (val === '') {
+      setVal('0');
+      updateProductStock(productId, 0);
+    } else {
+      const num = parseInt(val, 10);
+      const safe = isNaN(num) || num < 0 ? 0 : num;
+      setVal(String(safe));
+      updateProductStock(productId, safe);
+    }
+  };
+
+  const currentNum = parseInt(val, 10) || 0;
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      value={val}
+      onFocus={(e) => e.target.select()}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className={`w-16 px-2 py-1 border rounded text-xs font-mono tabular-nums text-center font-bold outline-none transition-colors ${
+        currentNum <= 0
+          ? 'border-rose-400 bg-rose-50 text-rose-700 font-bold'
+          : currentNum <= lowStockThreshold
+          ? 'border-amber-400 bg-amber-50 text-amber-900 font-bold'
+          : 'border-slate-300 bg-white text-slate-900 focus:border-orange-500'
+      }`}
+    />
+  );
+};
+
+interface InlinePriceInputProps {
+  productId: string;
+  price: number;
+  updateProductPrice: (id: string, newPrice: number) => void;
+}
+
+const InlinePriceInput: React.FC<InlinePriceInputProps> = ({
+  productId,
+  price,
+  updateProductPrice
+}) => {
+  const [val, setVal] = useState<string>(String(price));
+
+  useEffect(() => {
+    setVal(String(price));
+  }, [price]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (raw === '') {
+      setVal('');
+      return;
+    }
+    const cleaned = raw.length > 1 ? raw.replace(/^0+(?=\d)/, '') : raw;
+    setVal(cleaned);
+    const num = parseFloat(cleaned);
+    if (!isNaN(num) && num >= 0) {
+      updateProductPrice(productId, num);
+    }
+  };
+
+  const handleBlur = () => {
+    if (val === '') {
+      setVal('0');
+      updateProductPrice(productId, 0);
+    } else {
+      const num = parseFloat(val);
+      const safe = isNaN(num) || num < 0 ? 0 : num;
+      setVal(String(safe));
+      updateProductPrice(productId, safe);
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={val}
+      onFocus={(e) => e.target.select()}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className="w-20 px-2 py-1 border border-slate-300 rounded font-bold font-display text-slate-900 tabular-nums text-center outline-none focus:border-orange-500"
+    />
+  );
+};
+
+interface StockFilterDropdownProps {
+  value: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
+  onChange: (val: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock') => void;
+  totalProducts: number;
+  inStockCount: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+}
+
+const StockFilterDropdown: React.FC<StockFilterDropdownProps> = ({
+  value,
+  onChange,
+  totalProducts,
+  inStockCount,
+  lowStockCount,
+  outOfStockCount
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const options: Array<{ id: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock'; label: string }> = [
+    { id: 'all', label: `Всі товари - [ ${totalProducts} поз. ]` },
+    { id: 'in_stock', label: `В наявності - [ ${inStockCount} поз. ]` },
+    { id: 'low_stock', label: `⚠️ Закінчуються - [ ${lowStockCount} поз. ]` },
+    { id: 'out_of_stock', label: `❌ Немає в наявності - [ ${outOfStockCount} поз. ]` }
+  ];
+
+  const selectedOption = options.find(o => o.id === value) || options[0];
+
+  return (
+    <div className="relative w-full sm:w-auto" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full sm:w-auto min-w-[280px] px-3.5 py-2 border border-slate-200 rounded-xl text-xs bg-white text-slate-800 font-semibold flex items-center justify-between gap-2 shadow-2xs hover:border-orange-300 transition-all cursor-pointer"
+      >
+        <span className="truncate whitespace-nowrap">{selectedOption.label}</span>
+        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1.5 w-full sm:w-[320px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          {options.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => {
+                onChange(opt.id);
+                setIsOpen(false);
+              }}
+              className={`w-full px-4 py-2.5 text-left text-xs font-semibold flex items-center justify-between gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+                value === opt.id
+                  ? 'bg-orange-50 text-orange-900 font-bold'
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <span className="whitespace-nowrap">{opt.label}</span>
+              {value === opt.id && <Check className="w-3.5 h-3.5 text-orange-600 shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Helper component for managing each main category in the tree
 const AdminCategoryCard: React.FC<{
@@ -386,7 +589,9 @@ export const AdminPanel: React.FC = () => {
 
   // Search & Filter states
   const [productSearch, setProductSearch] = useState('');
-  const [productFilterStock, setProductFilterStock] = useState<'all' | 'in_stock' | 'out_of_stock'>('all');
+  const [productFilterStock, setProductFilterStock] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>('all');
+  const [lowStockThreshold, setLowStockThreshold] = useState<number>(3);
+  const [isProcurementModalOpen, setIsProcurementModalOpen] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [orderFilterStatus, setOrderFilterStatus] = useState<string>('all');
   const [clientSearch, setClientSearch] = useState('');
@@ -421,8 +626,8 @@ export const AdminPanel: React.FC = () => {
   const [pLeafCat, setPLeafCat] = useState('');
   const [pBadge, setPBadge] = useState<ProductBadge>('');
   const [pSku, setPSku] = useState('');
-  const [pStock, setPStock] = useState(10);
-  const [pPrice, setPPrice] = useState(100);
+  const [pStock, setPStock] = useState<number | string>(10);
+  const [pPrice, setPPrice] = useState<number | string>(100);
   const [pUnit, setPUnit] = useState('грн/шт');
   const [pDesc, setPDesc] = useState('');
   const [pImage, setPImage] = useState('');
@@ -538,11 +743,15 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  // KPIs
+  // KPIs & Stock Analysis
   const totalProducts = products.length;
   const totalOrders = orders.length;
   const totalSalesSum = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-  const outOfStockCount = products.filter((p) => p.stock <= 0).length;
+  const outOfStockProducts = products.filter((p) => p.stock <= 0);
+  const outOfStockCount = outOfStockProducts.length;
+  const lowStockProducts = products.filter((p) => p.stock > 0 && p.stock <= lowStockThreshold);
+  const lowStockCount = lowStockProducts.length;
+  const totalCriticalStockCount = outOfStockCount + lowStockCount;
   const averageOrderValue = totalOrders > 0 ? totalSalesSum / totalOrders : 0;
 
   if (!isAdminLoggedIn) {
@@ -922,6 +1131,103 @@ export const AdminPanel: React.FC = () => {
     printWindow.print();
   };
 
+  // Export Procurement List to CSV
+  const exportLowStockCSV = () => {
+    const criticalItems = products.filter(p => p.stock <= lowStockThreshold);
+    if (criticalItems.length === 0) {
+      showToast('Всі товари на складі мають достатній залишок!', 'info');
+      return;
+    }
+    const headers = ['Артикул', 'Назва товару', 'Категорія', 'Поточний залишок', 'Ціна продажу', 'Рекомендована закупівля'];
+    const rows = criticalItems.map(p => [
+      `"${p.sku.replace(/"/g, '""')}"`,
+      `"${p.name.replace(/"/g, '""')}"`,
+      `"${p.category.replace(/"/g, '""')}"`,
+      p.stock,
+      p.price,
+      Math.max(10, 20 - p.stock) // Suggested order
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `iskra_low_stock_procurement_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Завантажено відомість на закупівлю (${criticalItems.length} товарів)`, 'success');
+  };
+
+  // Print Procurement Sheet for Suppliers
+  const printProcurementList = () => {
+    const criticalItems = products.filter(p => p.stock <= lowStockThreshold);
+    if (criticalItems.length === 0) {
+      showToast('Всі товари на складі мають достатній залишок!', 'info');
+      return;
+    }
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Відомість на закупівлю товару ISKRA</title>
+          <style>
+            body { font-family: sans-serif; padding: 25px; color: #0f172a; }
+            h1 { font-size: 20px; font-weight: 800; border-bottom: 2px solid #ea580c; padding-bottom: 8px; margin-bottom: 6px; }
+            .subtitle { font-size: 12px; color: #64748b; margin-bottom: 16px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
+            th { background: #f8fafc; font-weight: bold; }
+            .stock-zero { background: #fee2e2; color: #991b1b; font-weight: bold; }
+            .stock-low { background: #fef3c7; color: #92400e; font-weight: bold; }
+            .suggested { font-weight: bold; color: #0369a1; }
+            .footer { margin-top: 30px; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>Магазин «ISKRA» — Відомість на закупівлю та поповнення залишків</h1>
+          <div class="subtitle">
+            Дата формування: ${new Date().toLocaleString('uk-UA')} | Поріг залишку: менше ${lowStockThreshold + 1} шт. | Всього позицій: ${criticalItems.length}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 120px;">Артикул</th>
+                <th>Назва товару</th>
+                <th>Категорія</th>
+                <th style="text-align: center; width: 110px;">Поточний залишок</th>
+                <th style="text-align: center; width: 130px;">Рекомендовано замовити</th>
+                <th style="width: 120px;">Факт замовлення</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${criticalItems.map(p => `
+                <tr>
+                  <td><code>${p.sku}</code></td>
+                  <td><b>${p.name}</b></td>
+                  <td>${p.category}</td>
+                  <td style="text-align: center;" class="${p.stock <= 0 ? 'stock-zero' : 'stock-low'}">
+                    ${p.stock <= 0 ? '❌ 0 (Немає)' : `⚠️ ${p.stock} ${p.unit}`}
+                  </td>
+                  <td style="text-align: center;" class="suggested">
+                    +${Math.max(10, 20 - p.stock)} шт.
+                  </td>
+                  <td>___________</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="footer">
+            Магазин сантехніки та електротоварів «ISKRA» • ${siteSettings.city}, ${siteSettings.address} • Тел: ${siteSettings.phone}
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       
@@ -990,14 +1296,27 @@ export const AdminPanel: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
-            <span>Всього товарів</span>
+            <span>Товари на складі</span>
             <Package className="w-4 h-4 text-orange-500" />
           </div>
           <div className="text-2xl font-black font-display text-slate-900 tabular-nums">
             {totalProducts}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">
-            {outOfStockCount > 0 ? `${outOfStockCount} закінчились` : 'Всі в наявності'}
+          <div className="text-[10px] mt-0.5 flex flex-wrap items-center gap-1.5">
+            {totalCriticalStockCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('products');
+                  setProductFilterStock('low_stock');
+                }}
+                className="text-amber-700 font-bold bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 transition-colors cursor-pointer"
+              >
+                ⚠️ {totalCriticalStockCount} потребують закупки
+              </button>
+            ) : (
+              <span className="text-emerald-600 font-medium">✓ Всі в достатній кількості</span>
+            )}
           </div>
         </div>
 
@@ -1051,6 +1370,12 @@ export const AdminPanel: React.FC = () => {
         >
           <Package className="w-4 h-4" />
           <span>Товари ({products.length})</span>
+          {totalCriticalStockCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-white flex items-center gap-0.5 shadow-2xs" title={`Закінчуються: ${lowStockCount}, Немає: ${outOfStockCount}`}>
+              <span>⚠️</span>
+              <span>{totalCriticalStockCount}</span>
+            </span>
+          )}
         </button>
 
         <button
@@ -1774,6 +2099,60 @@ export const AdminPanel: React.FC = () => {
               />
             </div>
 
+            {/* Low Stock Dedicated Settings Card */}
+            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-3 my-3">
+              <h4 className="font-bold text-slate-900 flex items-center gap-2 text-xs uppercase tracking-wider text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>Налаштування списку «Товари, що закінчуються»</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Поріг залишку за замовчуванням (шт.)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={siteSettings.features?.lowStockThreshold ?? lowStockThreshold}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') return;
+                        const val = Math.max(1, parseInt(raw, 10) || 1);
+                        setLowStockThreshold(val);
+                        updateSiteFeatures({ lowStockThreshold: val });
+                      }}
+                      className="w-20 px-3 py-1.5 border border-slate-300 rounded-xl font-bold font-mono text-center bg-white"
+                    />
+                    <span className="text-slate-500 text-[11px]">шт. на складі</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Товари з кількістю від 0 до цього значення потрапляють у список критичного залишку.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Показувати сповіщення покупцям
+                  </label>
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={siteSettings.features?.showLowStockBadgeToBuyers ?? true}
+                      onChange={(e) => updateSiteFeatures({ showLowStockBadgeToBuyers: e.target.checked })}
+                      className="w-4 h-4 text-amber-600 rounded"
+                    />
+                    <span className="text-slate-700 text-xs">
+                      Плашка «⚠️ Закінчується! Залишилося X шт.» на картці товару
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-3">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
@@ -1921,10 +2300,97 @@ export const AdminPanel: React.FC = () => {
       {activeTab === 'products' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
           
+          {/* Low Stock Warning Alert Card */}
+          {totalCriticalStockCount > 0 && (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs animate-in fade-in space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                      <span>Сповіщення про залишки: товари закінчуються на складі!</span>
+                      <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                        {totalCriticalStockCount} поз.
+                      </span>
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Критичний залишок (0–{lowStockThreshold} шт.): <b className="text-amber-800">{lowStockCount} товарів</b>
+                      {outOfStockCount > 0 && <span> • Повністю відсутні: <b className="text-rose-700">{outOfStockCount} товарів</b></span>}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Threshold Switcher */}
+                <div className="flex items-center gap-1.5 self-end sm:self-auto bg-white/80 p-1 rounded-xl border border-amber-200 text-xs">
+                  <span className="text-[11px] font-semibold text-slate-500 pl-1.5">Поріг:</span>
+                  {[1, 2, 3, 5, 10].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setLowStockThreshold(t);
+                        updateSiteFeatures({ lowStockThreshold: t });
+                      }}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        lowStockThreshold === t
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {t} шт.
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons for Low Stock */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/60 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setProductFilterStock(productFilterStock === 'low_stock' ? 'all' : 'low_stock')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer ${
+                    productFilterStock === 'low_stock'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-white hover:bg-amber-100 text-amber-900 border border-amber-300'
+                  }`}
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>
+                    {productFilterStock === 'low_stock'
+                      ? 'Показати всі товари'
+                      : `Показати товари, що закінчуються (${totalCriticalStockCount})`}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={exportLowStockCSV}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl border border-slate-300 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                  title="Завантажити таблицю Excel/CSV для замовлення у постачальника"
+                >
+                  <FileDown className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Заявка постачальнику (CSV)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={printProcurementList}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl border border-slate-300 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                  title="Роздрукувати відомість на поповнення складу"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Друк відомості</span>
+                </button>
+              </div>
+            </div>
+          )}
+          
           {/* Action bar & Filters */}
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-2 flex-1 max-w-xl">
-              <div className="relative flex-1 min-w-[200px]">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-xl w-full">
+              <div className="relative flex-1 min-w-[180px]">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
@@ -1935,15 +2401,14 @@ export const AdminPanel: React.FC = () => {
                 />
               </div>
 
-              <select
+              <StockFilterDropdown
                 value={productFilterStock}
-                onChange={(e) => setProductFilterStock(e.target.value as any)}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-medium"
-              >
-                <option value="all">Всі товари ({products.length})</option>
-                <option value="in_stock">Тільки в наявності ({products.filter(p => p.stock > 0).length})</option>
-                <option value="out_of_stock">Закінчилися ({products.filter(p => p.stock <= 0).length})</option>
-              </select>
+                onChange={setProductFilterStock}
+                totalProducts={products.length}
+                inStockCount={products.filter(p => p.stock > 0).length}
+                lowStockCount={totalCriticalStockCount}
+                outOfStockCount={outOfStockCount}
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -2057,7 +2522,14 @@ export const AdminPanel: React.FC = () => {
                 {products
                   .filter((p) => {
                     const matchQ = p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase());
-                    const matchStock = productFilterStock === 'all' ? true : productFilterStock === 'in_stock' ? p.stock > 0 : p.stock <= 0;
+                    const matchStock = 
+                      productFilterStock === 'all' 
+                        ? true 
+                        : productFilterStock === 'in_stock' 
+                        ? p.stock > 0 
+                        : productFilterStock === 'low_stock' 
+                        ? p.stock <= lowStockThreshold 
+                        : p.stock <= 0;
                     return matchQ && matchStock;
                   })
                   .map((p) => (
@@ -2087,26 +2559,29 @@ export const AdminPanel: React.FC = () => {
                       <td className="py-2.5 px-4 font-mono text-slate-600">
                         {p.sku}
                       </td>
-                      <td className="py-2.5 px-4">
-                        <input
-                          type="number"
-                          min="0"
-                          value={p.stock}
-                          onChange={(e) => updateProductStock(p.id, parseInt(e.target.value) || 0)}
-                          className={`w-16 px-2 py-1 border rounded text-xs font-mono tabular-nums ${
-                            p.stock <= 0 ? 'border-rose-400 bg-rose-50 text-rose-700 font-bold' : 'border-slate-300'
-                          }`}
-                        />
+                      <td className="py-2.5 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <InlineStockInput
+                            productId={p.id}
+                            stock={p.stock}
+                            lowStockThreshold={lowStockThreshold}
+                            updateProductStock={updateProductStock}
+                          />
+                          {p.stock <= lowStockThreshold && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                              p.stock <= 0 ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-900'
+                            }`}>
+                              {p.stock <= 0 ? '❌ 0 шт' : `⚠️ ${p.stock} шт`}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            value={p.price}
-                            onChange={(e) => updateProductPrice(p.id, parseFloat(e.target.value) || 0)}
-                            className="w-20 px-2 py-1 border border-slate-300 rounded font-bold font-display text-slate-900 tabular-nums"
+                          <InlinePriceInput
+                            productId={p.id}
+                            price={p.price}
+                            updateProductPrice={updateProductPrice}
                           />
                           <span className="text-[10px] text-slate-400">{p.unit}</span>
                         </div>
@@ -4042,8 +4517,17 @@ export const AdminPanel: React.FC = () => {
                       required
                       min="0"
                       value={pStock}
-                      onChange={(e) => setPStock(parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setPStock('');
+                        } else {
+                          const cleaned = raw.replace(/^0+(?=\d)/, '');
+                          setPStock(cleaned);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
                     />
                   </div>
 
@@ -4055,7 +4539,16 @@ export const AdminPanel: React.FC = () => {
                       step="0.1"
                       min="0"
                       value={pPrice}
-                      onChange={(e) => setPPrice(parseFloat(e.target.value) || 0)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setPPrice('');
+                        } else {
+                          const cleaned = raw.replace(/^0+(?=\d)/, '');
+                          setPPrice(cleaned);
+                        }
+                      }}
                       className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
                     />
                   </div>

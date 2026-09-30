@@ -10,13 +10,16 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
-  const { addToCart, toggleWishlist, isInWishlist, setQuickViewProduct } = useStore();
+  const { addToCart, toggleWishlist, isInWishlist, setQuickViewProduct, siteSettings } = useStore();
   const [imageError, setImageError] = useState(false);
   const [isAddedRecently, setIsAddedRecently] = useState(false);
 
   const brand = getProductBrand(product);
   const isFavorited = Boolean(product?.id && isInWishlist(product.id));
   const isOutOfStock = product.stock <= 0;
+  const lowThreshold = siteSettings?.features?.lowStockThreshold ?? 3;
+  const isLowStock = !isOutOfStock && product.stock <= lowThreshold;
+  const showLowStockBadge = isLowStock && (siteSettings?.features?.showLowStockBadgeToBuyers ?? true);
 
   const isPlumbing = 
     product.category?.toLowerCase().includes('сантех') ||
@@ -120,12 +123,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             {product.name}
           </h3>
 
-          {/* Stock in Green */}
-          <div className="text-[11px] font-semibold text-emerald-700 mb-3">
+          {/* Stock Status */}
+          <div className="text-[11px] font-semibold mb-3">
             {isOutOfStock ? (
-              <span className="text-red-600">Закінчився на складі</span>
+              <span className="text-red-600 font-bold">Закінчився на складі</span>
+            ) : showLowStockBadge ? (
+              <span className="text-amber-800 bg-amber-50 border border-amber-200/90 font-bold px-1.5 py-0.5 rounded animate-pulse inline-flex items-center gap-1">
+                <span>⚠️ Закінчується!</span>
+                <span>Залишилося {product.stock} {product.unit.replace('грн/', '') || 'шт.'}</span>
+              </span>
             ) : (
-              <span>В наявності: {product.stock}</span>
+              <span className="text-emerald-700">В наявності: {product.stock}</span>
             )}
           </div>
         </div>

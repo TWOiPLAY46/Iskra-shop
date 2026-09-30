@@ -536,7 +536,10 @@ export const initialSiteSettings: SiteSettings = {
     showExactStock: true,
     floatingCallBtn: true,
     minOrderSum: 50,
-    freeShippingThreshold: 3000
+    freeShippingThreshold: 3000,
+    lowStockThreshold: 3,
+    lowStockTelegramNotify: true,
+    showLowStockBadgeToBuyers: true
   }
 };
 

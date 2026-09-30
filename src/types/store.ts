@@ -82,6 +82,9 @@ export interface SiteFeatures {
   minOrderSum: number;
   freeShippingThreshold: number;
   weeklyDealEnabled?: boolean;
+  lowStockThreshold?: number;
+  lowStockTelegramNotify?: boolean;
+  showLowStockBadgeToBuyers?: boolean;
 }
 
 export interface SiteSettings {
