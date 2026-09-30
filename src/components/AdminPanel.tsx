@@ -2321,8 +2321,8 @@ export const AdminPanel: React.FC = () => {
                       </span>
                     </h4>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      Критичний залишок (0–{lowStockThreshold} шт.): <b className="text-amber-800">{lowStockCount} товарів</b>
-                      {outOfStockCount > 0 && <span> • Повністю відсутні: <b className="text-rose-700">{outOfStockCount} товарів</b></span>}
+                      Критичний залишок ({lowStockThreshold} шт.): <b className="text-amber-800">{lowStockCount} {lowStockCount % 10 === 1 && lowStockCount % 100 !== 11 ? 'позиція' : lowStockCount % 10 >= 2 && lowStockCount % 10 <= 4 && (lowStockCount % 100 < 10 || lowStockCount % 100 >= 20) ? 'позиції' : 'позицій'}</b>
+                      {outOfStockCount > 0 && <span> • Повністю відсутні: <b className="text-rose-700">{outOfStockCount} {outOfStockCount % 10 === 1 && outOfStockCount % 100 !== 11 ? 'позиція' : outOfStockCount % 10 >= 2 && outOfStockCount % 10 <= 4 && (outOfStockCount % 100 < 10 || outOfStockCount % 100 >= 20) ? 'позиції' : 'позицій'}</b></span>}
                     </p>
                   </div>
                 </div>
@@ -2411,7 +2411,7 @@ export const AdminPanel: React.FC = () => {
                 onChange={setProductFilterStock}
                 totalProducts={products.length}
                 inStockCount={products.filter(p => p.stock > 0).length}
-                lowStockCount={totalCriticalStockCount}
+                lowStockCount={lowStockCount}
                 outOfStockCount={outOfStockCount}
               />
             </div>
@@ -2533,7 +2533,7 @@ export const AdminPanel: React.FC = () => {
                         : productFilterStock === 'in_stock' 
                         ? p.stock > 0 
                         : productFilterStock === 'low_stock' 
-                        ? p.stock <= lowStockThreshold 
+                        ? p.stock > 0 && p.stock <= lowStockThreshold 
                         : p.stock <= 0;
                     return matchQ && matchStock;
                   })
