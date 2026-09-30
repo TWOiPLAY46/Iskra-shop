@@ -66,6 +66,7 @@ import {
   X
 } from 'lucide-react';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
+import { LiveTrackingWidget } from './LiveTrackingWidget';
 import { 
   checkAdminSecurityStatus, 
   recordFailedLogin, 
@@ -2949,6 +2950,16 @@ export const AdminPanel: React.FC = () => {
                             Зберегти ТТН
                           </button>
                         </div>
+
+                        {o.ttn && (
+                          <div className="pt-2">
+                            <LiveTrackingWidget 
+                              order={o}
+                              apiKey={siteSettings.novaPoshtaApiKey}
+                              onStatusAutoUpdate={updateOrderStatus}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
