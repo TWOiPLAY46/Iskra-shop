@@ -405,21 +405,44 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return verified.email || sessionStorage.getItem('adminUserEmail') || null;
   });
 
-  // Navigation & filters
+  // Navigation & filters with localStorage + URL Hash persistence
   const [activeView, setActiveView] = useState<'store' | 'account' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('iskra_active_view');
-      if (saved === 'admin' && verifySecureSession().isValid) return 'admin';
-      if (saved === 'account') return 'account';
+      const hash = window.location.hash.replace('#', '');
+      if (hash === 'admin' || hash === 'account' || hash === 'store') {
+        return hash;
+      }
+      const saved = localStorage.getItem('iskra_active_view');
+      if (saved === 'admin' || saved === 'account' || saved === 'store') {
+        return saved;
+      }
     }
     return 'store';
   });
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('iskra_active_view', activeView);
+      localStorage.setItem('iskra_active_view', activeView);
+      if (activeView === 'store') {
+        if (window.location.hash) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } else {
+        window.location.hash = activeView;
+      }
     }
   }, [activeView]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash === 'admin' || hash === 'account' || hash === 'store') {
+        setActiveView(hash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const [activeCategory, setActiveCategory] = useState<string>('Усі');
   const [searchQuery, setSearchQuery] = useState<string>('');
