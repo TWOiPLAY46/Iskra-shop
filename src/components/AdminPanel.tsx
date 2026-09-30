@@ -203,6 +203,14 @@ const InlinePriceInput: React.FC<InlinePriceInputProps> = ({
   );
 };
 
+const getUkPositionsWord = (n: number) => {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'позиція';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return 'позиції';
+  return 'позицій';
+};
+
 interface StockFilterDropdownProps {
   value: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
   onChange: (val: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock') => void;
@@ -232,14 +240,6 @@ const StockFilterDropdown: React.FC<StockFilterDropdownProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const getUkPositionsWord = (n: number) => {
-    const m10 = n % 10;
-    const m100 = n % 100;
-    if (m10 === 1 && m100 !== 11) return 'позиція';
-    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return 'позиції';
-    return 'позицій';
-  };
 
   const options: Array<{ id: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock'; label: string }> = [
     { id: 'all', label: `Всі товари - [ ${totalProducts} ${getUkPositionsWord(totalProducts)} ]` },
@@ -2333,8 +2333,8 @@ export const AdminPanel: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                       <span>Сповіщення про залишки: товари закінчуються на складі!</span>
-                      <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-                        {totalCriticalStockCount} поз.
+                      <span className="bg-amber-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                        {totalCriticalStockCount} {getUkPositionsWord(totalCriticalStockCount)}
                       </span>
                     </h4>
                     <p className="text-xs text-slate-600 mt-0.5">
