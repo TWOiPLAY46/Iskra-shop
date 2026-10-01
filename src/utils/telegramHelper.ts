@@ -8,8 +8,7 @@ export async function sendTelegramAlert(botToken: string, chatId: string, text: 
   const url = `https://api.telegram.org/bot${cleanToken}/sendMessage`;
   const payload = {
     chat_id: cleanChatId,
-    text,
-    parse_mode: 'Markdown'
+    text
   };
 
   // 1. Try via CORS proxy (browsers block direct fetch to api.telegram.org due to CORS headers)
