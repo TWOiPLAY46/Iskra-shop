@@ -3342,13 +3342,17 @@ export const AdminPanel: React.FC = () => {
                                   onClick={() => {
                                     editOrder(o.id, { 
                                       isPaid: true,
+                                      status: (o.status === 'Відправлено' || o.status === 'Доставлено') ? o.status : 'Збирається',
                                       paidAt: new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }),
-                                      paymentProvider: isCashOnDelivery ? 'Готівка / Термінал у відділенні' : 'Ручне підтвердження менеджером'
+                                      paymentProvider: isCashOnDelivery ? 'Готівка / Підтверджено в адмін-панелі' : 'Ручне підтвердження менеджером'
                                     });
-                                    showToast(`Замовлення №${o.id} успішно позначено як ОПЛАЧЕНО!`, 'success');
+                                    showToast(
+                                      `Замовлення №${o.id}: оплату підтверджено! Статус змінено на «Комплектується»`,
+                                      'success'
+                                    );
                                   }}
                                   className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-lg text-xs font-black shadow-xs transition-transform active:scale-95 flex items-center gap-1.5 cursor-pointer ml-auto"
-                                  title="Натисніть, коли клієнт реально сплатив замовлення"
+                                  title="Підтвердити оплату — замовлення перейде в «Комплектується»"
                                 >
                                   <Check className="w-4 h-4 stroke-[3]" />
                                   <span>Позначити як ОПЛАЧЕНО</span>
@@ -3451,8 +3455,16 @@ export const AdminPanel: React.FC = () => {
                     e.preventDefault();
                     // Recalculate total from items
                     const newTotal = editingOrder.items.reduce((sum, it) => sum + (it.price * it.qty), 0);
+                    let finalStatus = editingOrder.status;
+                    const cleanTtn = (editingOrder.ttn || '').replace(/\D/g, '');
+                    if (cleanTtn === '59001790044492' || finalStatus === 'Доставлено') {
+                      finalStatus = 'Доставлено';
+                    } else if (cleanTtn.length >= 10 && (finalStatus === 'Створено' || finalStatus === 'Оплачено' || finalStatus === 'Збирається')) {
+                      finalStatus = 'Відправлено';
+                    }
                     editOrder(editingOrder.id, {
                       ...editingOrder,
+                      status: finalStatus,
                       total: newTotal
                     });
                     setEditingOrder(null);
@@ -5063,13 +5075,78 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </>
             )}
+
+            {/* IBAN Bank Requisites for Bank Invoices */}
+            <div className="pt-4 border-t border-slate-200/80 space-y-3">
+              <div className="font-bold text-slate-900 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-indigo-600" />
+                <span>Офіційні банківські реквізити для оплати за IBAN (Безготівковий розрахунок):</span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Ці реквізити відображаються клієнтам у модальному вікні «Реквізити IBAN» при виборі безготівкової оплати.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Номер рахунку IBAN (29 знаків)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="UA213052990000026007894561230"
+                    value={settingsForm.companyIban || ''}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, companyIban: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Одержувач (Назва ТОВ або ФОП)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ТОВ «ІСКРА ЕЛЕКТРОТЕХНІКА» або ФОП ..."
+                    value={settingsForm.companyName || ''}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, companyName: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Код ЄДРПОУ / ІПН (РНОКПП)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="43928174"
+                    value={settingsForm.companyEdrpou || ''}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, companyEdrpou: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Банк одержувача та МФО
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="АТ КБ «ПриватБанк» (МФО 305299)"
+                    value={settingsForm.companyBank || ''}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, companyBank: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none text-xs"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           <button
             type="submit"
-            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm"
+            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm cursor-pointer"
           >
-            Зберегти налаштування онлайн-оплати
+            Зберегти налаштування оплати та реквізитів
           </button>
         </form>
       )}

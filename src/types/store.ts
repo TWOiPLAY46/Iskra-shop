@@ -109,6 +109,10 @@ export interface SiteSettings {
   paymentMerchantId?: string;
   paymentSecretKey?: string;
   monobankToken?: string;
+  companyName?: string;
+  companyEdrpou?: string;
+  companyIban?: string;
+  companyBank?: string;
   features: SiteFeatures;
 }
 

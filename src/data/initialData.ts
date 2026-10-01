@@ -734,6 +734,10 @@ export const initialSiteSettings: SiteSettings = {
   paymentMerchantId: "test_merch_n1",
   paymentSecretKey: "",
   monobankToken: "",
+  companyName: "ТОВ «ІСКРА ЕЛЕКТРОТЕХНІКА»",
+  companyEdrpou: "43928174",
+  companyIban: "UA213052990000026007894561230",
+  companyBank: "АТ КБ «ПриватБанк» (МФО 305299)",
   features: {
     ordersEnabled: true,
     loyaltyEnabled: true,

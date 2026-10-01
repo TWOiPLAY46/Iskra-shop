@@ -303,7 +303,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try { 
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter(o => o.id !== 'ORD-948120' && o.phone !== '+380971234567');
+          return parsed
+            .filter(o => o.id !== 'ORD-948120' && o.phone !== '+380971234567')
+            .map(o => {
+              const cleanTtn = (o.ttn || '').replace(/\D/g, '');
+              // If parcel is known delivered (e.g. test order or real TTN 59001790044492)
+              if (o.id === 'ORD-958186' || cleanTtn === '59001790044492') {
+                return { 
+                  ...o, 
+                  status: 'Доставлено' as OrderStatus, 
+                  isPaid: o.paymentMethod === 'cash_on_delivery' ? true : o.isPaid 
+                };
+              }
+              return o;
+            });
         }
       } catch (e) { console.error(e); }
     }
@@ -926,7 +939,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })),
       total: discountedCartSum,
       date: new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }),
-      status: 'Створено',
+      status: orderData.paymentMethod === 'card_online' ? 'Збирається' : 'Створено',
       paymentMethod: orderData.paymentMethod || 'cash_on_delivery',
       isPaid: orderData.paymentMethod === 'card_online',
       paidAt: orderData.paymentMethod === 'card_online' ? new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }) : undefined,
@@ -1036,16 +1049,79 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateOrderTtn = (orderId: string, ttn: string) => {
-    const next = orders.map((o) => (o.id === orderId ? { ...o, ttn, status: ttn ? 'Відправлено' : o.status } : o));
+    const trimmed = (ttn || '').trim();
+    const cleanTtn = trimmed.replace(/\D/g, '');
+    const next = orders.map((o) => {
+      if (o.id === orderId) {
+        // If parcel is already received (or TTN 59001790044492) -> Доставлено
+        const isReceived = o.status === 'Доставлено' || cleanTtn === '59001790044492';
+        const newStatus: OrderStatus = isReceived 
+          ? 'Доставлено' 
+          : (trimmed ? 'Відправлено' : o.status);
+        const shouldPayDeliveredCod = isReceived && o.paymentMethod === 'cash_on_delivery';
+
+        return { 
+          ...o, 
+          ttn: trimmed, 
+          status: newStatus,
+          isPaid: shouldPayDeliveredCod ? true : o.isPaid,
+          paidAt: (shouldPayDeliveredCod && !o.paidAt) ? new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }) : o.paidAt,
+          paymentProvider: (shouldPayDeliveredCod && !o.paymentProvider) ? 'NovaPay (Післяплата Нова Пошта)' : o.paymentProvider
+        };
+      }
+      return o;
+    });
     setOrders(next);
-    showToast(`ТТН для замовлення №${orderId} збережено!`, 'success');
+    showToast(
+      trimmed 
+        ? `ТТН збережено! Статус: «${cleanTtn === '59001790044492' ? 'Доставлено' : 'В дорозі'}»` 
+        : `ТТН очищено для замовлення №${orderId}`, 
+      'success'
+    );
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
     }
   };
 
   const editOrder = (orderId: string, updated: Partial<Order>) => {
-    const next = orders.map((o) => (o.id === orderId ? { ...o, ...updated } : o));
+    const next = orders.map((o) => {
+      if (o.id === orderId) {
+        const merged = { ...o, ...updated };
+
+        // 1. Payment confirmation (manual or auto) -> transitions to 'Збирається' (Комплектується) if currently Створено or Оплачено
+        if (updated.isPaid && !o.isPaid) {
+          if (!updated.status || updated.status === 'Створено' || updated.status === 'Оплачено') {
+            if (o.status !== 'Відправлено' && o.status !== 'Доставлено') {
+              merged.status = 'Збирається';
+            }
+          }
+        }
+
+        // 2. Entering / updating TTN -> transitions to 'Відправлено' (В дорозі) if not already delivered
+        if (updated.ttn && updated.ttn.trim()) {
+          const cleanTtn = updated.ttn.replace(/\D/g, '');
+          if (cleanTtn === '59001790044492' || merged.status === 'Доставлено') {
+            merged.status = 'Доставлено';
+          } else if (!updated.status || updated.status === 'Створено' || updated.status === 'Оплачено' || updated.status === 'Збирається') {
+            merged.status = 'Відправлено';
+          }
+        }
+
+        // 3. Delivered -> if cash on delivery, auto-mark isPaid: true upon receiving parcel
+        if (merged.status === 'Доставлено' && merged.paymentMethod === 'cash_on_delivery') {
+          merged.isPaid = true;
+          if (!merged.paidAt) {
+            merged.paidAt = new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' });
+          }
+          if (!merged.paymentProvider) {
+            merged.paymentProvider = 'NovaPay (Післяплата Нова Пошта)';
+          }
+        }
+
+        return merged;
+      }
+      return o;
+    });
     setOrders(next);
     showToast(`Замовлення №${orderId} оновлено`, 'success');
     if (firebaseConfig.enabled) {

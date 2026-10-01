@@ -32,7 +32,9 @@ export const LiveTrackingWidget: React.FC<LiveTrackingWidgetProps> = ({
         apiKey, 
         order.date, 
         order.status, 
-        order.city
+        order.city,
+        order.isPaid,
+        order.paymentMethod
       );
       setTrackingData(res);
 
@@ -40,8 +42,6 @@ export const LiveTrackingWidget: React.FC<LiveTrackingWidgetProps> = ({
       if (res.isSuccess && onStatusAutoUpdate) {
         if (res.statusCategory === 'delivered' && order.status !== 'Доставлено') {
           onStatusAutoUpdate(order.id, 'Доставлено');
-        } else if (res.statusCategory === 'arrived' && order.status !== 'Доставлено') {
-          // Arrived at branch
         } else if (res.statusCategory === 'in_transit' && order.status !== 'Відправлено' && order.status !== 'Доставлено') {
           onStatusAutoUpdate(order.id, 'Відправлено');
         }
@@ -55,7 +55,7 @@ export const LiveTrackingWidget: React.FC<LiveTrackingWidgetProps> = ({
 
   useEffect(() => {
     loadTracking();
-  }, [ttnNumber, apiKey]);
+  }, [ttnNumber, apiKey, order.status, order.isPaid, order.paymentMethod]);
 
   if (!ttnNumber) return null;
 
@@ -118,6 +118,18 @@ export const LiveTrackingWidget: React.FC<LiveTrackingWidgetProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {order.status !== 'Доставлено' && onStatusAutoUpdate && (
+            <button
+              type="button"
+              onClick={() => onStatusAutoUpdate(order.id, 'Доставлено')}
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black flex items-center gap-1 transition-all shadow-xs active:scale-95 cursor-pointer"
+              title="Підтвердити отримання посилки покупцем"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Посилку отримано</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={loadTracking}

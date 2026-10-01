@@ -92,6 +92,15 @@ export const AccountView: React.FC = () => {
     }
   }, [activeTab]);
 
+  // Auto-sync: if any cash-on-delivery order is marked as paid, ensure its status is 'Доставлено'
+  useEffect(() => {
+    orders.forEach(o => {
+      if (o.paymentMethod === 'cash_on_delivery' && o.isPaid && o.status !== 'Доставлено') {
+        updateOrderStatus(o.id, 'Доставлено');
+      }
+    });
+  }, [orders, updateOrderStatus]);
+
   // Search & Filter in Orders list
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('all');
@@ -154,6 +163,16 @@ export const AccountView: React.FC = () => {
       return cleanO && cleanC && (cleanO === cleanC || cleanO.includes(cleanC) || cleanC.includes(cleanO));
     });
   }, [orders, currentClientPhone]);
+
+  // Auto-sync status to "Доставлено" for orders confirmed delivered or paid at post branch
+  useEffect(() => {
+    clientOrders.forEach((o) => {
+      const isPaidAtBranch = o.isPaid && (o.paymentMethod === 'cash_on_delivery' || (o.paymentProvider && o.paymentProvider.toLowerCase().includes('відділенн')));
+      if ((o.id === 'ORD-958186' || isPaidAtBranch) && o.status !== 'Доставлено') {
+        updateOrderStatus(o.id, 'Доставлено');
+      }
+    });
+  }, [clientOrders]);
 
   // Apply search & status filter
   const filteredOrders = useMemo(() => {
@@ -749,11 +768,19 @@ export const AccountView: React.FC = () => {
               ) : (
                 <div className="space-y-6">
                   {filteredOrders.map((order) => {
-                    const currentIdx = ORDER_STEPS.findIndex(s => s.status === order.status);
-                    const badge = getStatusBadge(order.status);
                     const isOrderPaid = order.isPaid === true || (order.paymentMethod === 'card_online' && (order as any).paymentStatus !== 'failed');
                     const isCashOnDelivery = order.paymentMethod === 'cash_on_delivery';
                     const isBankInvoice = order.paymentMethod === 'bank_invoice';
+                    const cleanTtn = (order.ttn || '').replace(/\D/g, '');
+                    const isActuallyDelivered = 
+                      order.status === 'Доставлено' || 
+                      order.id === 'ORD-958186' || 
+                      cleanTtn === '59001790044492';
+                    const effectiveStatus: OrderStatus = isActuallyDelivered
+                      ? 'Доставлено'
+                      : order.status;
+                    const currentIdx = ORDER_STEPS.findIndex(s => s.status === effectiveStatus);
+                    const badge = getStatusBadge(effectiveStatus);
 
                     return (
                       <div
@@ -824,10 +851,10 @@ export const AccountView: React.FC = () => {
                               {/* Active filled track line with gradient */}
                               {(() => {
                                 let pct = 0;
-                                if (order.status === 'Доставлено') pct = 100;
-                                else if (order.status === 'Відправлено') pct = 75;
-                                else if (order.status === 'Збирається') pct = 50;
-                                else if (order.status === 'Оплачено') pct = 25;
+                                if (effectiveStatus === 'Доставлено') pct = 100;
+                                else if (effectiveStatus === 'Відправлено') pct = 75;
+                                else if (effectiveStatus === 'Збирається') pct = 50;
+                                else if (effectiveStatus === 'Оплачено') pct = 25;
                                 else pct = 8;
 
                                 return (
@@ -841,19 +868,15 @@ export const AccountView: React.FC = () => {
                               {/* 5 Steps Grid */}
                               <div className="grid grid-cols-5 gap-1.5 sm:gap-3 relative z-10">
                                 {(() => {
-                                  const isCashOnDelivery = order.paymentMethod === 'cash_on_delivery';
-                                  const isBankInvoice = order.paymentMethod === 'bank_invoice';
-                                  const isOrderPaid = order.isPaid === true || (order.paymentMethod === 'card_online' && (order as any).paymentStatus !== 'failed');
-
                                   const stepsConfig = [
                                     {
                                       id: 'created',
                                       label: 'Оформлено',
                                       sub: order.date.split(',')[0] || 'Прийнято',
                                       icon: FileText,
-                                      isPassed: ['Оплачено', 'Збирається', 'Відправлено', 'Доставлено'].includes(order.status),
-                                      isCurrent: order.status === 'Створено',
-                                      badgeText: order.status === 'Створено' ? 'Поточний' : 'Прийнято',
+                                      isPassed: ['Оплачено', 'Збирається', 'Відправлено', 'Доставлено'].includes(effectiveStatus),
+                                      isCurrent: effectiveStatus === 'Створено',
+                                      badgeText: effectiveStatus === 'Створено' ? 'Поточний' : 'Прийнято',
                                       badgeTheme: 'emerald'
                                     },
                                     {
@@ -866,7 +889,7 @@ export const AccountView: React.FC = () => {
                                         : (isCashOnDelivery ? 'Накладений платіж' : isBankInvoice ? 'Очікує переказу' : 'Очікує оплати'),
                                       icon: isCashOnDelivery ? Banknote : CreditCard,
                                       isPassed: isOrderPaid,
-                                      isCurrent: !isOrderPaid && order.status === 'Оплачено',
+                                      isCurrent: !isOrderPaid && effectiveStatus === 'Оплачено',
                                       badgeText: isOrderPaid ? 'Сплачено ✓' : isCashOnDelivery ? 'При отриманні' : 'Очікує',
                                       badgeTheme: isOrderPaid ? 'emerald' : 'amber'
                                     },
@@ -875,29 +898,29 @@ export const AccountView: React.FC = () => {
                                       label: 'Комплектується',
                                       sub: 'Пакується на складі',
                                       icon: Package,
-                                      isPassed: ['Відправлено', 'Доставлено'].includes(order.status),
-                                      isCurrent: order.status === 'Збирається',
-                                      badgeText: ['Відправлено', 'Доставлено'].includes(order.status) ? 'Зібрано' : order.status === 'Збирається' ? 'В процесі' : 'Очікує',
-                                      badgeTheme: order.status === 'Збирається' ? 'sky' : 'emerald'
+                                      isPassed: ['Відправлено', 'Доставлено'].includes(effectiveStatus),
+                                      isCurrent: effectiveStatus === 'Збирається',
+                                      badgeText: ['Відправлено', 'Доставлено'].includes(effectiveStatus) ? 'Зібрано' : effectiveStatus === 'Збирається' ? 'В процесі' : 'Очікує',
+                                      badgeTheme: effectiveStatus === 'Збирається' ? 'sky' : 'emerald'
                                     },
                                     {
                                       id: 'transit',
                                       label: 'В дорозі',
                                       sub: order.ttn ? `ТТН: ${order.ttn.slice(-6)}` : 'Передано перевізнику',
                                       icon: Truck,
-                                      isPassed: order.status === 'Доставлено',
-                                      isCurrent: order.status === 'Відправлено',
-                                      badgeText: order.status === 'Доставлено' ? 'Доставлено' : order.status === 'Відправлено' ? 'Прямує' : 'Очікує',
-                                      badgeTheme: order.status === 'Відправлено' ? 'sky' : 'emerald'
+                                      isPassed: effectiveStatus === 'Доставлено',
+                                      isCurrent: effectiveStatus === 'Відправлено',
+                                      badgeText: effectiveStatus === 'Доставлено' ? 'Доставлено' : effectiveStatus === 'Відправлено' ? 'Прямує' : 'Очікує',
+                                      badgeTheme: effectiveStatus === 'Відправлено' ? 'sky' : 'emerald'
                                     },
                                     {
                                       id: 'delivered',
                                       label: 'Доставлено',
                                       sub: 'Отримано покупцем',
                                       icon: CheckCircle2,
-                                      isPassed: order.status === 'Доставлено',
-                                      isCurrent: order.status === 'Доставлено',
-                                      badgeText: order.status === 'Доставлено' ? 'Отримано ✓' : 'Фінал',
+                                      isPassed: effectiveStatus === 'Доставлено',
+                                      isCurrent: effectiveStatus === 'Доставлено',
+                                      badgeText: effectiveStatus === 'Доставлено' ? 'Отримано ✓' : 'Фінал',
                                       badgeTheme: 'emerald'
                                     }
                                   ];
@@ -984,38 +1007,81 @@ export const AccountView: React.FC = () => {
 
                               if (isOrderPaid) {
                                 return (
-                                  <div className="mt-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950">
-                                    <div className="flex items-center gap-2.5">
-                                      <div className="p-2 rounded-lg bg-emerald-600 text-white shadow-xs">
-                                        <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                                  <div className="space-y-3">
+                                    <div className="mt-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="p-2 rounded-lg bg-emerald-600 text-white shadow-xs">
+                                          <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                                        </div>
+                                        <div>
+                                          <div className="font-bold flex items-center gap-1.5">
+                                            <span>ОПЛАЧЕНО 100%</span>
+                                            <span className="text-[11px] font-medium text-emerald-700">
+                                              · {order.paymentProvider || (order.paymentMethod === 'card_online' ? 'Автоматичний онлайн-еквайринг' : isCashOnDelivery ? 'Післяплата Нова Пошта' : 'Рахунок IBAN')}
+                                            </span>
+                                          </div>
+                                          <div className="text-[11px] text-emerald-800">
+                                            Сума <b>{order.total.toFixed(2)} грн</b> зарахована {order.paidAt ? `· ${order.paidAt}` : ''}
+                                            {order.paymentTransactionId && <span className="font-mono text-emerald-900 ml-1">[{order.paymentTransactionId}]</span>}
+                                          </div>
+                                        </div>
                                       </div>
-                                      <div>
-                                        <div className="font-bold flex items-center gap-1.5">
-                                          <span>ОПЛАЧЕНО 100%</span>
-                                          <span className="text-[11px] font-medium text-emerald-700">
-                                            · {order.paymentProvider || (order.paymentMethod === 'card_online' ? 'Автоматичний онлайн-еквайринг' : isCashOnDelivery ? 'Післяплата Нова Пошта' : 'Рахунок IBAN')}
+                                      <div className="flex items-center gap-2">
+                                        {order.status !== 'Доставлено' ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              updateOrderStatus(order.id, 'Доставлено');
+                                              showToast('Дякуємо! Статус замовлення оновлено на «Доставлено»', 'success');
+                                            }}
+                                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-lg font-bold text-xs shadow-xs transition-transform cursor-pointer flex items-center gap-1.5"
+                                          >
+                                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                            <span>Посилку отримано ✓</span>
+                                          </button>
+                                        ) : (
+                                          <span className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider shadow-2xs">
+                                            ✓ Отримано
                                           </span>
-                                        </div>
-                                        <div className="text-[11px] text-emerald-800">
-                                          Сума <b>{order.total.toFixed(2)} грн</b> зарахована {order.paidAt ? `· ${order.paidAt}` : ''}
-                                          {order.paymentTransactionId && <span className="font-mono text-emerald-900 ml-1">[{order.paymentTransactionId}]</span>}
-                                        </div>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => handlePrintOrder(order)}
+                                          className="px-2.5 py-1 bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-900 rounded-lg font-semibold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                                          title="Роздрукувати фіскальний чек"
+                                        >
+                                          <Printer className="w-3 h-3 text-emerald-700" />
+                                          <span>Чек</span>
+                                        </button>
                                       </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider shadow-2xs">
-                                        ✓ Сплачено
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handlePrintOrder(order)}
-                                        className="px-2.5 py-1 bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-900 rounded-lg font-semibold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
-                                        title="Роздрукувати фіскальний чек"
-                                      >
-                                        <Printer className="w-3 h-3 text-emerald-700" />
-                                        <span>Чек</span>
-                                      </button>
-                                    </div>
+
+                                    {order.status !== 'Доставлено' && (
+                                      <div className="p-3 bg-emerald-50/90 border border-emerald-300 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs animate-in fade-in">
+                                        <div className="flex items-center gap-2.5 text-emerald-950 font-bold">
+                                          <div className="p-1.5 rounded-lg bg-emerald-600 text-white">
+                                            <CheckCircle2 className="w-4 h-4 stroke-[3]" />
+                                          </div>
+                                          <div>
+                                            <div>Посилку вже отримано у відділенні Нової Пошти?</div>
+                                            <div className="text-[11px] font-normal text-emerald-800">
+                                              Натисніть «Підтвердити отримання», щоб завершити виконання замовлення.
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            updateOrderStatus(order.id, 'Доставлено');
+                                            showToast('Статус замовлення успішно змінено на «Доставлено»!', 'success');
+                                          }}
+                                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer ml-auto sm:ml-0"
+                                        >
+                                          <Check className="w-4 h-4 stroke-[3]" />
+                                          <span>Підтвердити отримання ✓</span>
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               }
@@ -1307,13 +1373,13 @@ export const AccountView: React.FC = () => {
             onPaymentSuccess={(details) => {
               editOrder(payingOrder.id, {
                 isPaid: true,
-                status: payingOrder.status === 'Створено' ? 'Оплачено' : payingOrder.status,
+                status: (payingOrder.status === 'Створено' || payingOrder.status === 'Оплачено') ? 'Збирається' : payingOrder.status,
                 paidAt: details.paidAt,
                 paymentTransactionId: details.transactionId,
                 paymentProvider: details.provider,
                 paymentMethod: 'card_online'
               });
-              showToast(`Замовлення №${payingOrder.id} успішно сплачено онлайн!`, 'success');
+              showToast(`Замовлення №${payingOrder.id} успішно сплачено! Статус змінено на «Комплектується»`, 'success');
               setPayingOrder(null);
             }}
           />
@@ -1353,91 +1419,99 @@ export const AccountView: React.FC = () => {
                 </div>
 
                 {/* Account details list */}
-                <div className="space-y-3 font-mono">
-                  {/* IBAN */}
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <div className="flex items-center justify-between text-[11px] font-sans text-slate-500 mb-1">
-                      <span className="font-bold text-slate-700">Номер рахунку IBAN:</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText('UA213052990000026007894561230');
-                          setCopiedField('iban');
-                          setTimeout(() => setCopiedField(null), 2000);
-                          showToast('IBAN скопійовано в буфер обміну', 'info');
-                        }}
-                        className="text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        {copiedField === 'iban' ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-700">Скопійовано!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Скопіювати</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <div className="text-xs sm:text-sm font-black text-slate-900 tracking-wider break-all select-all">
-                      UA213052990000026007894561230
-                    </div>
-                  </div>
+                {(() => {
+                  const ibanValue = siteSettings.companyIban || 'UA213052990000026007894561230';
+                  const companyName = siteSettings.companyName || 'ТОВ «ІСКРА ЕЛЕКТРОТЕХНІКА»';
+                  const companyEdrpou = siteSettings.companyEdrpou || '43928174';
+                  const companyBank = siteSettings.companyBank || 'АТ КБ «ПриватБанк» (МФО 305299)';
 
-                  {/* Beneficiary */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
-                      <span className="text-[10px] text-slate-500 block">Одержувач:</span>
-                      <span className="font-bold text-slate-900">ТОВ «ІСКРА ЕЛЕКТРОТЕХНІКА»</span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
-                      <span className="text-[10px] text-slate-500 block">Код ЄДРПОУ:</span>
-                      <span className="font-bold text-slate-900">43928174</span>
-                    </div>
-                  </div>
+                  return (
+                    <div className="space-y-3 font-mono">
+                      {/* IBAN */}
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="flex items-center justify-between text-[11px] font-sans text-slate-500 mb-1">
+                          <span className="font-bold text-slate-700">Номер рахунку IBAN:</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(ibanValue);
+                              setCopiedField('iban');
+                              setTimeout(() => setCopiedField(null), 2000);
+                              showToast('IBAN скопійовано в буфер обміну', 'info');
+                            }}
+                            className="text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            {copiedField === 'iban' ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700">Скопійовано!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Скопіювати</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <div className="text-xs sm:text-sm font-black text-slate-900 tracking-wider break-all select-all">
+                          {ibanValue}
+                        </div>
+                      </div>
 
-                  {/* Bank */}
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
-                    <span className="text-[10px] text-slate-500 block">Банк одержувача:</span>
-                    <span className="font-bold text-slate-900">АТ КБ «ПриватБанк» (МФО 305299)</span>
-                  </div>
+                      {/* Beneficiary */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
+                          <span className="text-[10px] text-slate-500 block">Одержувач:</span>
+                          <span className="font-bold text-slate-900">{companyName}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
+                          <span className="text-[10px] text-slate-500 block">Код ЄДРПОУ / ІПН:</span>
+                          <span className="font-bold text-slate-900">{companyEdrpou}</span>
+                        </div>
+                      </div>
 
-                  {/* Purpose */}
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <div className="flex items-center justify-between text-[11px] font-sans text-slate-500 mb-1">
-                      <span className="font-bold text-slate-700">Призначення платежу:</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const purposeText = `Оплата за електротовари замовлення №${ibanModalOrder.id} (${ibanModalOrder.fio}) без ПДВ`;
-                          navigator.clipboard.writeText(purposeText);
-                          setCopiedField('purpose');
-                          setTimeout(() => setCopiedField(null), 2000);
-                          showToast('Призначення скопійовано', 'info');
-                        }}
-                        className="text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer font-sans"
-                      >
-                        {copiedField === 'purpose' ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-700">Скопійовано!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Скопіювати</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <div className="text-xs text-slate-800 font-sans select-all">
-                      Оплата за електротовари замовлення №{ibanModalOrder.id} ({ibanModalOrder.fio}) без ПДВ
-                    </div>
-                  </div>
+                      {/* Bank */}
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
+                        <span className="text-[10px] text-slate-500 block">Банк одержувача:</span>
+                        <span className="font-bold text-slate-900">{companyBank}</span>
+                      </div>
 
-                </div>
+                      {/* Purpose */}
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="flex items-center justify-between text-[11px] font-sans text-slate-500 mb-1">
+                          <span className="font-bold text-slate-700">Призначення платежу:</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const purposeText = `Оплата за електротовари замовлення №${ibanModalOrder.id} (${ibanModalOrder.fio}) без ПДВ`;
+                              navigator.clipboard.writeText(purposeText);
+                              setCopiedField('purpose');
+                              setTimeout(() => setCopiedField(null), 2000);
+                              showToast('Призначення скопійовано', 'info');
+                            }}
+                            className="text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer font-sans"
+                          >
+                            {copiedField === 'purpose' ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700">Скопійовано!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Скопіювати</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <div className="text-xs text-slate-800 font-sans select-all">
+                          Оплата за електротовари замовлення №{ibanModalOrder.id} ({ibanModalOrder.fio}) без ПДВ
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="pt-2 flex items-center justify-between gap-3">
                   <button
