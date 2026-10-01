@@ -3039,7 +3039,7 @@ export const AdminPanel: React.FC = () => {
                     o.phone.toLowerCase().includes(orderSearch.toLowerCase()) ||
                     (o.ttn && o.ttn.includes(orderSearch));
                   const matchStatus = orderFilterStatus === 'all' || o.status === orderFilterStatus;
-                  const isPaid = o.isPaid === true || (o.paymentMethod === 'card_online' && (o as any).paymentStatus !== 'failed');
+                  const isPaid = o.isPaid === true;
                   const matchPayment = orderPaymentFilter === 'all'
                     ? true
                     : orderPaymentFilter === 'paid'
@@ -3049,7 +3049,7 @@ export const AdminPanel: React.FC = () => {
                   return matchQ && matchStatus && matchPayment;
                 })
                 .map((o) => {
-                  const isPaid = o.isPaid === true || (o.paymentMethod === 'card_online' && (o as any).paymentStatus !== 'failed');
+                  const isPaid = o.isPaid === true;
                   const isCashOnDelivery = o.paymentMethod === 'cash_on_delivery';
 
                   return (

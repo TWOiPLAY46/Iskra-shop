@@ -943,11 +943,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })),
       total: discountedCartSum,
       date: new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }),
-      status: orderData.paymentMethod === 'card_online' ? 'Збирається' : 'Створено',
+      status: 'Створено',
       paymentMethod: orderData.paymentMethod || 'cash_on_delivery',
-      isPaid: orderData.paymentMethod === 'card_online',
-      paidAt: orderData.paymentMethod === 'card_online' ? new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }) : undefined,
-      paymentProvider: orderData.paymentMethod === 'card_online' ? 'Картка онлайн (3D-Secure / monoPay)' : undefined,
+      isPaid: false,
+      paidAt: undefined,
+      paymentProvider: undefined,
       notes: orderData.notes
     };
 

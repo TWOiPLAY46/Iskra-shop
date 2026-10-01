@@ -768,7 +768,7 @@ export const AccountView: React.FC = () => {
               ) : (
                 <div className="space-y-6">
                   {filteredOrders.map((order) => {
-                    const isOrderPaid = order.isPaid === true || (order.paymentMethod === 'card_online' && (order as any).paymentStatus !== 'failed');
+                    const isOrderPaid = order.isPaid === true;
                     const isCashOnDelivery = order.paymentMethod === 'cash_on_delivery';
                     const isBankInvoice = order.paymentMethod === 'bank_invoice';
                     const cleanTtn = (order.ttn || '').replace(/\D/g, '');
@@ -1003,7 +1003,7 @@ export const AccountView: React.FC = () => {
                             {(() => {
                               const isCashOnDelivery = order.paymentMethod === 'cash_on_delivery';
                               const isBankInvoice = order.paymentMethod === 'bank_invoice';
-                              const isOrderPaid = order.isPaid === true || (order.paymentMethod === 'card_online' && (order as any).paymentStatus !== 'failed');
+                              const isOrderPaid = order.isPaid === true;
 
                               if (isOrderPaid) {
                                 return (

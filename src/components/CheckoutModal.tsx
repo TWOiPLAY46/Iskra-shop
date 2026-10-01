@@ -45,6 +45,7 @@ export const CheckoutModal: React.FC = () => {
     currentClient, 
     currentClientPhone,
     placeOrder, 
+    editOrder,
     setActiveView,
     siteSettings,
     showToast
@@ -274,23 +275,7 @@ export const CheckoutModal: React.FC = () => {
 
     const fullPhone = getFullInternationalPhone(phone);
 
-    // If online card payment is selected, launch the secure payment modal
-    if (paymentMethod === 'card_online') {
-      const generatedTempId = Math.floor(100000 + Math.random() * 900000).toString();
-      setTempOrderId(generatedTempId);
-      setPendingOrderPayload({
-        fio,
-        phone: fullPhone,
-        delivery: deliveryString,
-        city: orderCity,
-        paymentMethod: 'card_online',
-        notes
-      });
-      setIsOnlinePaymentModalOpen(true);
-      return;
-    }
-
-    // Cash on delivery or Bank invoice: direct placeOrder
+    // Create order directly for all payment methods
     setIsSubmitting(true);
     try {
       const order = await placeOrder({
@@ -317,23 +302,27 @@ export const CheckoutModal: React.FC = () => {
     paidAt: string;
     cardMask?: string;
   }) => {
-    if (!pendingOrderPayload) return;
+    if (!placedOrder) return;
     setIsSubmitting(true);
     try {
-      const extraNotes = `${pendingOrderPayload.notes ? pendingOrderPayload.notes + ' · ' : ''}Оплата: ${paymentResult.provider} (Транзакція: ${paymentResult.transactionId}, ${paymentResult.paidAt})`;
-      const order = await placeOrder({
-        ...pendingOrderPayload,
-        paymentMethod: 'card_online',
+      const extraNotes = `${placedOrder.notes ? placedOrder.notes + ' · ' : ''}Оплата: ${paymentResult.provider} (Транзакція: ${paymentResult.transactionId}, ${paymentResult.paidAt})`;
+      editOrder(placedOrder.id, {
+        isPaid: true,
+        status: (placedOrder.status === 'Створено' || placedOrder.status === 'Оплачено') ? 'Збирається' : placedOrder.status,
+        paidAt: paymentResult.paidAt,
+        paymentTransactionId: paymentResult.transactionId,
+        paymentProvider: paymentResult.provider,
         notes: extraNotes
       });
       setPlacedOrder({
-        ...order,
-        isPaid: true
+        ...placedOrder,
+        isPaid: true,
+        notes: extraNotes
       });
-      showToast('Оплату успішно здійснено!', 'success');
+      showToast('Оплату успішно зафіксовано!', 'success');
     } catch (err) {
-      console.error('Order creation error after payment:', err);
-      showToast('Помилка збереження замовлення', 'error');
+      console.error('Order update error after payment:', err);
+      showToast('Помилка оновлення статусу оплати', 'error');
     } finally {
       setIsSubmitting(false);
       setIsOnlinePaymentModalOpen(false);
@@ -409,7 +398,13 @@ export const CheckoutModal: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-slate-500">Оплата:</span>
                   <span className="font-semibold text-slate-900">
-                    {placedOrder.paymentMethod === 'card_online' ? '💳 Онлайн-оплата (Сплачено)' : placedOrder.paymentMethod === 'bank_invoice' ? '📄 Рахунок IBAN' : '💵 Післяплата'}
+                    {placedOrder.isPaid 
+                      ? '💳 Онлайн-оплата (✓ Оплачено)' 
+                      : placedOrder.paymentMethod === 'card_online' 
+                      ? '💳 Онлайн-картка / Apple Pay (Очікує оплати)' 
+                      : placedOrder.paymentMethod === 'bank_invoice' 
+                      ? '📄 Рахунок IBAN (Очікує оплати)' 
+                      : '💵 Післяплата (при отриманні)'}
                   </span>
                 </div>
                 <div className="flex justify-between pt-1 border-t border-slate-200">
@@ -419,6 +414,15 @@ export const CheckoutModal: React.FC = () => {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                {placedOrder.paymentMethod === 'card_online' && !placedOrder.isPaid && (
+                  <button
+                    onClick={() => setIsOnlinePaymentModalOpen(true)}
+                    className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>Оплатити зараз ({placedOrder.total.toFixed(2)} грн)</span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     handleClose();
