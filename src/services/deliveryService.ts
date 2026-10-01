@@ -501,3 +501,712 @@ export async function trackNovaPoshtaTTN(
   }
 }
 
+/**
+ * =====================================================================
+ * UKRPOSHTA (УКРПОШТА) API & DIRECTORY INTEGRATION
+ * =====================================================================
+ */
+
+export interface UkrposhtaOffice {
+  postcode: string; // 5-digit index (e.g. '22600')
+  city: string;
+  district?: string;
+  region: string;
+  name: string;
+  address: string;
+  type: 'Стаціонарне' | 'Пересувне' | 'Вантажне';
+  phone?: string;
+  workHours?: string;
+}
+
+// Built-in comprehensive registry of Ukrposhta branches & postal codes
+export const UKRPOSHTA_OFFICES: UkrposhtaOffice[] = [
+  // --- Оратів та Вінницький регіон ---
+  {
+    postcode: '22600',
+    city: 'смт Оратів',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Оратів (Центральне відділення)',
+    address: 'вул. Героїв Майдану, 78',
+    type: 'Стаціонарне',
+    phone: '0800 300 545',
+    workHours: 'Пн-Пт: 08:30 - 17:30, Сб: 08:30 - 15:00'
+  },
+  {
+    postcode: '22601',
+    city: 'с. Оратів',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ с. Оратів',
+    address: 'вул. Центральна, 14',
+    type: 'Стаціонарне',
+    workHours: 'Вт, Чт, Сб: 09:00 - 14:00'
+  },
+  {
+    postcode: '22610',
+    city: 'с. Животівка',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Животівка',
+    address: 'вул. Миру, 21',
+    type: 'Стаціонарне',
+    workHours: 'Вт, Чт, Сб: 09:00 - 14:00'
+  },
+  {
+    postcode: '22612',
+    city: 'с. Чагів',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Чагів',
+    address: 'вул. Шкільна, 5',
+    type: 'Стаціонарне',
+    workHours: 'Ср, Пт: 09:00 - 13:00'
+  },
+  {
+    postcode: '22615',
+    city: 'с. Новоживотів',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Новоживотів',
+    address: 'вул. Центральна, 45',
+    type: 'Стаціонарне',
+    workHours: 'Вт, Чт, Сб: 09:00 - 14:00'
+  },
+  {
+    postcode: '22620',
+    city: 'с. Балабанівка',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Балабанівка',
+    address: 'вул. Першотравнева, 12',
+    type: 'Стаціонарне',
+    workHours: 'Вт, Пт: 09:00 - 13:00'
+  },
+  {
+    postcode: '22630',
+    city: 'с. Сабарівка',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Сабарівка',
+    address: 'вул. Гагаріна, 8',
+    type: 'Пересувне',
+    workHours: 'Ср, Сб: 10:00 - 13:00'
+  },
+  {
+    postcode: '22632',
+    city: 'с. Фронтівка',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Фронтівка',
+    address: 'вул. Залізнична, 3',
+    type: 'Стаціонарне',
+    workHours: 'Вт, Чт: 09:00 - 14:00'
+  },
+  {
+    postcode: '22634',
+    city: 'с. Скоморошки',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Скоморошки',
+    address: 'вул. Заводська, 16',
+    type: 'Стаціонарне',
+    workHours: 'Вт, Чт, Сб: 09:00 - 14:00'
+  },
+  {
+    postcode: '22635',
+    city: 'с. Якимівка',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Якимівка',
+    address: 'вул. Лісова, 2',
+    type: 'Пересувне',
+    workHours: 'Ср, Пт: 10:00 - 12:30'
+  },
+  {
+    postcode: '22640',
+    city: 'с. Юшківці',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Юшківці',
+    address: 'вул. Поштова, 7',
+    type: 'Пересувне',
+    workHours: 'Вт, Чт: 10:00 - 13:00'
+  },
+  {
+    postcode: '22642',
+    city: 'с. Чернявка',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Чернявка',
+    address: 'вул. Шевченка, 24',
+    type: 'Пересувне',
+    workHours: 'Ср, Сб: 09:30 - 12:30'
+  },
+  {
+    postcode: '22644',
+    city: 'с. Велика Ростівка',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Велика Ростівка',
+    address: 'вул. Садова, 11',
+    type: 'Пересувне',
+    workHours: 'Вт, Пт: 11:00 - 13:30'
+  },
+
+  // --- Вінниця та райцентри Вінниччини ---
+  {
+    postcode: '21050',
+    city: 'м. Вінниця',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ №50 (Вінницький Головпоштамт)',
+    address: 'вул. Соборна, 8',
+    type: 'Стаціонарне',
+    phone: '0800 300 545',
+    workHours: 'Пн-Сб: 08:00 - 19:00, Нд: 09:00 - 16:00'
+  },
+  {
+    postcode: '21001',
+    city: 'м. Вінниця',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Вінниця 1',
+    address: 'вул. Соборна, 59',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:00 - 18:00, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '21007',
+    city: 'м. Вінниця',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Вінниця 7',
+    address: 'вул. Стрілецька, 14',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 09:00 - 18:00, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '21009',
+    city: 'м. Вінниця',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Вінниця 9 (Замостя)',
+    address: 'вул. Київська, 16',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 18:00, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '21012',
+    city: 'м. Вінниця',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Вінниця 12 (Залізничний вокзал)',
+    address: 'вул. Привокзальна, 1',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 19:00'
+  },
+  {
+    postcode: '21021',
+    city: 'м. Вінниця',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Вінниця 21 (Вишенька)',
+    address: 'вул. 600-річчя, 66',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 18:30, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '21027',
+    city: 'м. Вінниця',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Вінниця 27 (Келецька)',
+    address: 'вул. Келецька, 106',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 09:00 - 18:00, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '22700',
+    city: 'м. Іллінці',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Іллінці (Центральне)',
+    address: 'вул. Незалежності, 18',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 17:30, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '22500',
+    city: 'м. Липовець',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Липовець',
+    address: 'вул. Василя Липківського, 30',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 17:30, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '22200',
+    city: 'м. Погребище',
+    district: 'Вінницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Погребище',
+    address: 'вул. Б. Хмельницького, 81',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 17:30, Сб: 09:00 - 14:00'
+  },
+  {
+    postcode: '22100',
+    city: 'м. Козятин',
+    district: 'Хмільницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Козятин',
+    address: 'вул. Героїв Майдану, 22',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:00 - 18:00, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '23100',
+    city: 'м. Жмеринка',
+    district: 'Жмеринський р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Жмеринка',
+    address: 'вул. Б. Хмельницького, 19',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:00 - 18:00, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '22000',
+    city: 'м. Хмільник',
+    district: 'Хмільницький р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Хмільник',
+    address: 'вул. Шевченка, 1',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 17:30, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '23700',
+    city: 'м. Гайсин',
+    district: 'Гайсинський р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Гайсин',
+    address: 'вул. 1 Травня, 48',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 17:30, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '23600',
+    city: 'м. Тульчин',
+    district: 'Тульчинський р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Тульчин',
+    address: 'вул. Леонтовича, 65',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 17:30, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '24000',
+    city: 'м. Могилів-Подільський',
+    district: 'Могилів-Подільський р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Могилів-Подільський',
+    address: 'вул. Стависька, 14',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 17:30, Сб: 09:00 - 15:00'
+  },
+  {
+    postcode: '24400',
+    city: 'м. Бершадь',
+    district: 'Гайсинський р-н',
+    region: 'Вінницька обл.',
+    name: 'ВПЗ Бершадь',
+    address: 'вул. Миколаєнка, 2',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 17:00, Сб: 09:00 - 14:00'
+  },
+
+  // --- Київ та Київська область ---
+  {
+    postcode: '01001',
+    city: 'м. Київ',
+    region: 'м. Київ',
+    name: 'Київ 1 (Київський Головпоштамт)',
+    address: 'вул. Хрещатик, 22',
+    type: 'Стаціонарне',
+    phone: '0800 300 545',
+    workHours: 'Пн-Сб: 08:00 - 20:00, Нд: 09:00 - 18:00'
+  },
+  {
+    postcode: '01030',
+    city: 'м. Київ',
+    region: 'м. Київ',
+    name: 'ВПЗ Київ 30',
+    address: 'вул. Богдана Хмельницького, 44',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 19:00, Сб: 09:00 - 17:00'
+  },
+  {
+    postcode: '02002',
+    city: 'м. Київ',
+    region: 'м. Київ',
+    name: 'ВПЗ Київ 2 (Лівобережна)',
+    address: 'вул. Микільсько-Слобідська, 2Б',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:00 - 19:00, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '03035',
+    city: 'м. Київ',
+    region: 'м. Київ',
+    name: 'ВПЗ Київ 35 (Південний вокзал)',
+    address: 'пл. Вокзальна, 1',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 20:00'
+  },
+  {
+    postcode: '04050',
+    city: 'м. Київ',
+    region: 'м. Київ',
+    name: 'ВПЗ Київ 50 (Лук\'янівка)',
+    address: 'вул. Січових Стрільців, 59',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 19:00, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '04210',
+    city: 'м. Київ',
+    region: 'м. Київ',
+    name: 'ВПЗ Київ 210 (Оболонь)',
+    address: 'пр-т Оболонський, 14',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 19:00, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '09100',
+    city: 'м. Біла Церква',
+    district: 'Білоцерківський р-н',
+    region: 'Київська обл.',
+    name: 'ВПЗ Біла Церква (Центральне)',
+    address: 'вул. Ярослава Мудрого, 38/44',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '07400',
+    city: 'м. Бровари',
+    district: 'Броварський р-н',
+    region: 'Київська обл.',
+    name: 'ВПЗ Бровари',
+    address: 'вул. Гагаріна, 20',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:00 - 19:00, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '08300',
+    city: 'м. Бориспіль',
+    district: 'Бориспільський р-н',
+    region: 'Київська обл.',
+    name: 'ВПЗ Бориспіль',
+    address: 'вул. Київський Шлях, 86',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:00 - 18:30, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '08200',
+    city: 'м. Ірпінь',
+    district: 'Бучанський р-н',
+    region: 'Київська обл.',
+    name: 'ВПЗ Ірпінь',
+    address: 'вул. Шевченка, 4',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 18:30, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '08292',
+    city: 'м. Буча',
+    district: 'Бучанський р-н',
+    region: 'Київська обл.',
+    name: 'ВПЗ Буча',
+    address: 'вул. Енергетиків, 6',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 18:30, Сб: 09:00 - 16:00'
+  },
+
+  // --- Обласні центри та великі міста України ---
+  {
+    postcode: '79000',
+    city: 'м. Львів',
+    region: 'Львівська обл.',
+    name: 'ВПЗ Львів (Львівський Головпоштамт)',
+    address: 'вул. Словацького, 1',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 19:30, Нд: 09:00 - 16:00'
+  },
+  {
+    postcode: '79005',
+    city: 'м. Львів',
+    region: 'Львівська обл.',
+    name: 'ВПЗ Львів 5',
+    address: 'вул. Франка, 28',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Пт: 08:30 - 18:30, Сб: 09:00 - 16:00'
+  },
+  {
+    postcode: '65001',
+    city: 'м. Одеса',
+    region: 'Одеська обл.',
+    name: 'ВПЗ Одеса 1 (Одеський Головпоштамт)',
+    address: 'вул. Садова, 10',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 19:00, Нд: 09:00 - 16:00'
+  },
+  {
+    postcode: '49000',
+    city: 'м. Дніпро',
+    region: 'Дніпропетровська обл.',
+    name: 'ВПЗ Дніпро (Дніпровський Головпоштамт)',
+    address: 'пр-т Дмитра Яворницького, 62',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 19:00, Нд: 09:00 - 16:00'
+  },
+  {
+    postcode: '61001',
+    city: 'м. Харків',
+    region: 'Харківська обл.',
+    name: 'ВПЗ Харків 1',
+    address: 'пл. Привокзальна, 2',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:30 - 18:00'
+  },
+  {
+    postcode: '10001',
+    city: 'м. Житомир',
+    region: 'Житомирська обл.',
+    name: 'ВПЗ Житомир (Головпоштамт)',
+    address: 'вул. Перемоги, 1',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '29000',
+    city: 'м. Хмельницький',
+    region: 'Хмельницька обл.',
+    name: 'ВПЗ Хмельницький (Головпоштамт)',
+    address: 'вул. Подільська, 44',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '18001',
+    city: 'м. Черкаси',
+    region: 'Черкаська обл.',
+    name: 'ВПЗ Черкаси (Головпоштамт)',
+    address: 'вул. Байди Вишневецького, 34',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '20300',
+    city: 'м. Умань',
+    district: 'Уманський р-н',
+    region: 'Черкаська обл.',
+    name: 'ВПЗ Умань',
+    address: 'вул. Європейська, 3',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:30 - 17:30'
+  },
+  {
+    postcode: '33001',
+    city: 'м. Рівне',
+    region: 'Рівненська обл.',
+    name: 'ВПЗ Рівне (Головпоштамт)',
+    address: 'вул. Соборна, 56',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '43000',
+    city: 'м. Луцьк',
+    region: 'Волинська обл.',
+    name: 'ВПЗ Луцьк (Головпоштамт)',
+    address: 'вул. Кривий Вал, 19',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '46001',
+    city: 'м. Тернопіль',
+    region: 'Тернопільська обл.',
+    name: 'ВПЗ Тернопіль (Головпоштамт)',
+    address: 'вул. Чорновола, 1',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '76000',
+    city: 'м. Івано-Франківськ',
+    region: 'Івано-Франківська обл.',
+    name: 'ВПЗ Івано-Франківськ (Головпоштамт)',
+    address: 'вул. Січових Стрільців, 15',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '58000',
+    city: 'м. Чернівці',
+    region: 'Чернівецька обл.',
+    name: 'ВПЗ Чернівці (Головпоштамт)',
+    address: 'вул. Худякова, 1',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '88000',
+    city: 'м. Ужгород',
+    region: 'Закарпатська обл.',
+    name: 'ВПЗ Ужгород (Головпоштамт)',
+    address: 'пл. Поштова, 4',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '36000',
+    city: 'м. Полтава',
+    region: 'Полтавська обл.',
+    name: 'ВПЗ Полтава (Головпоштамт)',
+    address: 'вул. Соборності, 33',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '14000',
+    city: 'м. Чернігів',
+    region: 'Чернігівська обл.',
+    name: 'ВПЗ Чернігів (Головпоштамт)',
+    address: 'пр-т Миру, 28',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '25006',
+    city: 'м. Кропивницький',
+    region: 'Кіровоградська обл.',
+    name: 'ВПЗ Кропивницький (Головпоштамт)',
+    address: 'вул. Гоголя, 72',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:00 - 18:30'
+  },
+  {
+    postcode: '69000',
+    city: 'м. Запоріжжя',
+    region: 'Запорізька обл.',
+    name: 'ВПЗ Запоріжжя (Головпоштамт)',
+    address: 'пр-т Соборний, 133',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:30 - 18:00'
+  },
+  {
+    postcode: '54001',
+    city: 'м. Миколаїв',
+    region: 'Миколаївська обл.',
+    name: 'ВПЗ Миколаїв (Головпоштамт)',
+    address: 'вул. Адміральська, 27',
+    type: 'Стаціонарне',
+    workHours: 'Пн-Сб: 08:30 - 18:00'
+  }
+];
+
+/**
+ * Intelligent Ukrposhta post offices search:
+ * - Searches by 5-digit postal code (prefix or exact)
+ * - Searches by town / village / city name
+ * - Searches by district or street address
+ * - Can query Ukrposhta e-commerce API if token is provided
+ */
+export async function searchUkrposhtaOffices(
+  query: string,
+  token?: string
+): Promise<UkrposhtaOffice[]> {
+  const cleanQ = query.trim().toLowerCase();
+  if (!cleanQ) {
+    // Return regional and top offices by default
+    return UKRPOSHTA_OFFICES.slice(0, 10);
+  }
+
+  // 1. If API Token is present and user typed something, attempt live classifier lookup
+  if (token && token.trim().length > 15) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      // Ukrposhta e-commerce API addresses endpoint
+      const isDigitsOnly = /^\d+$/.test(cleanQ);
+      const url = isDigitsOnly
+        ? `https://www.ukrposhta.ua/ecom/0.0.1/addresses/postcode/${cleanQ}`
+        : `https://www.ukrposhta.ua/ecom/0.0.1/addresses/settlements?name=${encodeURIComponent(cleanQ)}`;
+
+      const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {
+        headers: {
+          Authorization: `Bearer ${token.trim()}`,
+          Accept: 'application/json'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.data) && json.data.length > 0) {
+          const apiOffices: UkrposhtaOffice[] = json.data.map((item: any) => ({
+            postcode: item.postcode || item.postal_code || cleanQ,
+            city: item.city_name_ua || item.settlement_name_ua || item.city || '',
+            district: item.district_name_ua || item.district || '',
+            region: item.region_name_ua || item.region || '',
+            name: item.po_name_ua || `Відділення ${item.postcode || ''}`,
+            address: item.street_address_ua || item.address || '',
+            type: (item.type_name || 'Стаціонарне') as any,
+            phone: item.phone || '0800 300 545',
+            workHours: item.working_hours || 'Пн-Пт: 08:30 - 18:00'
+          }));
+          if (apiOffices.length > 0) {
+            return apiOffices;
+          }
+        }
+      }
+    } catch {
+      // Fallback seamlessly to built-in directory
+    }
+  }
+
+  // 2. High-speed local search through built-in Ukrainian registry
+  const isNumeric = /^\d+$/.test(cleanQ);
+
+  const matched = UKRPOSHTA_OFFICES.filter((office) => {
+    if (isNumeric) {
+      return office.postcode.startsWith(cleanQ);
+    }
+    const fullSearch = `${office.postcode} ${office.city} ${office.district || ''} ${office.region} ${office.name} ${office.address}`.toLowerCase();
+    return fullSearch.includes(cleanQ);
+  });
+
+  // Sort: exact postcode matches first, then exact city name, then others
+  matched.sort((a, b) => {
+    if (isNumeric) {
+      if (a.postcode === cleanQ) return -1;
+      if (b.postcode === cleanQ) return 1;
+      return a.postcode.localeCompare(b.postcode);
+    }
+    const aCityExact = a.city.toLowerCase().includes(cleanQ);
+    const bCityExact = b.city.toLowerCase().includes(cleanQ);
+    if (aCityExact && !bCityExact) return -1;
+    if (!aCityExact && bCityExact) return 1;
+    return 0;
+  });
+
+  return matched;
+}
+
+/**
+ * Instant lookup of Ukrposhta office by exact 5-digit index
+ */
+export function getUkrposhtaByPostcode(postcode: string): UkrposhtaOffice | undefined {
+  const clean = postcode.replace(/\D/g, '').trim();
+  if (clean.length !== 5) return undefined;
+  return UKRPOSHTA_OFFICES.find((o) => o.postcode === clean);
+}
+

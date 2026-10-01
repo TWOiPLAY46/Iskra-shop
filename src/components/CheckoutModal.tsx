@@ -29,7 +29,10 @@ import {
   getNovaPoshtaWarehouses, 
   DeliveryCity, 
   DeliveryWarehouse,
-  POPULAR_CITIES 
+  POPULAR_CITIES,
+  searchUkrposhtaOffices,
+  getUkrposhtaByPostcode,
+  UkrposhtaOffice
 } from '../services/deliveryService';
 import { OnlinePaymentModal } from './OnlinePaymentModal';
 
@@ -76,10 +79,15 @@ export const CheckoutModal: React.FC = () => {
   const [manualWarehouseText, setManualWarehouseText] = useState('');
   const [useManualWarehouse, setUseManualWarehouse] = useState(false);
 
-  // Ukrposhta fields
+  // Ukrposhta fields & auto-lookup
   const [upIndex, setUpIndex] = useState('');
   const [upCity, setUpCity] = useState('');
   const [upAddress, setUpAddress] = useState('');
+  const [ukrposhtaSearch, setUkrposhtaSearch] = useState('');
+  const [ukrposhtaOfficesList, setUkrposhtaOfficesList] = useState<UkrposhtaOffice[]>([]);
+  const [selectedUkrposhtaOffice, setSelectedUkrposhtaOffice] = useState<UkrposhtaOffice | null>(null);
+  const [isSearchingUkrposhta, setIsSearchingUkrposhta] = useState(false);
+  const [showUkrposhtaDropdown, setShowUkrposhtaDropdown] = useState(false);
 
   // Courier address
   const [streetAddress, setStreetAddress] = useState('');
@@ -151,6 +159,56 @@ export const CheckoutModal: React.FC = () => {
       isMounted = false;
     };
   }, [deliveryType, selectedCity, npDeliverySubType, siteSettings.novaPoshtaApiKey]);
+
+  // Load Ukrposhta offices on search query
+  useEffect(() => {
+    if (deliveryType !== 'ukrposhta') return;
+
+    let isMounted = true;
+    setIsSearchingUkrposhta(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await searchUkrposhtaOffices(ukrposhtaSearch, siteSettings.ukrposhtaToken);
+        if (isMounted) {
+          setUkrposhtaOfficesList(res);
+        }
+      } catch (err) {
+        console.warn('Ukrposhta lookup error:', err);
+      } finally {
+        if (isMounted) setIsSearchingUkrposhta(false);
+      }
+    }, 150);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [deliveryType, ukrposhtaSearch, siteSettings.ukrposhtaToken]);
+
+  const handleSelectUkrposhtaOffice = (office: UkrposhtaOffice) => {
+    setSelectedUkrposhtaOffice(office);
+    setUpIndex(office.postcode);
+    const fullCity = office.district 
+      ? `${office.city} (${office.district}, ${office.region})`
+      : `${office.city}, ${office.region}`;
+    setUpCity(fullCity);
+    setUpAddress(`${office.name}: ${office.address}`);
+    setShowUkrposhtaDropdown(false);
+    setUkrposhtaSearch('');
+    showToast(`Відділення Укрпошти [${office.postcode}] обрано!`, 'success');
+  };
+
+  const handleUkrposhtaIndexInput = (val: string) => {
+    const cleaned = val.replace(/\D/g, '').slice(0, 5);
+    setUpIndex(cleaned);
+    if (cleaned.length === 5) {
+      const match = getUkrposhtaByPostcode(cleaned);
+      if (match) {
+        handleSelectUkrposhtaOffice(match);
+      }
+    }
+  };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatUkrainianPhone(e.target.value);
@@ -685,49 +743,203 @@ export const CheckoutModal: React.FC = () => {
                   </div>
                 )}
 
-                {/* UKRPOSHTA FIELDS */}
+                {/* UKRPOSHTA AUTOMATED FINDER & FIELDS */}
                 {deliveryType === 'ukrposhta' && (
-                  <div className="bg-amber-50/40 p-4 rounded-xl border border-amber-200/80 space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-gradient-to-b from-amber-50/70 to-yellow-50/40 p-4 sm:p-5 rounded-2xl border border-amber-300/80 shadow-2xs space-y-4">
+                    {/* Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/60 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-amber-500 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                          УП
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                            <span>Укрпошта (Експрес / Стандарт)</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900 font-semibold">
+                              По всій Україні
+                            </span>
+                          </h4>
+                          <p className="text-[11px] text-amber-800/80">
+                            Автоматичний підбір відділення за 5-значним індексом або назвою міста/села
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-amber-900 font-bold bg-white/80 px-2.5 py-1 rounded-lg border border-amber-200">
+                        {isFreeShipping ? 'Доставка: Безкоштовно' : 'Тариф: від 35 грн'}
+                      </div>
+                    </div>
+
+                    {/* Interactive Autocomplete Search */}
+                    <div className="relative">
+                      <label className="block text-[11px] font-bold text-amber-950 mb-1 flex items-center justify-between">
+                        <span>Швидкий пошук відділення або індексу:</span>
+                        <span className="text-[10px] text-amber-700 font-normal">Почніть вводити індекс або назву села/міста</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="напр., 22600 або Оратів, Вінниця, Київ, Чагів..."
+                          value={ukrposhtaSearch}
+                          onFocus={() => setShowUkrposhtaDropdown(true)}
+                          onChange={(e) => {
+                            setUkrposhtaSearch(e.target.value);
+                            setShowUkrposhtaDropdown(true);
+                          }}
+                          className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-amber-300 text-xs bg-white text-slate-900 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs font-medium"
+                        />
+                        <Search className="w-4 h-4 text-amber-600 absolute left-3 top-3 pointer-events-none" />
+
+                        {isSearchingUkrposhta ? (
+                          <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin absolute right-3 top-3" />
+                        ) : ukrposhtaSearch ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUkrposhtaSearch('');
+                              setShowUkrposhtaDropdown(false);
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-600 absolute right-2.5 top-2.5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {/* Dropdown suggestions */}
+                      {showUkrposhtaDropdown && ukrposhtaOfficesList.length > 0 && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-20" 
+                            onClick={() => setShowUkrposhtaDropdown(false)} 
+                          />
+                          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-xl border border-amber-200 z-30 max-h-60 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95">
+                            <div className="p-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 flex items-center justify-between">
+                              <span>Знайдено відділень: {ukrposhtaOfficesList.length}</span>
+                              <span>Натисніть для автозаповнення</span>
+                            </div>
+                            {ukrposhtaOfficesList.map((office) => (
+                              <button
+                                key={office.postcode + office.address}
+                                type="button"
+                                onClick={() => handleSelectUkrposhtaOffice(office)}
+                                className="w-full text-left p-2.5 sm:p-3 hover:bg-amber-50/80 transition-colors flex items-start gap-2.5 cursor-pointer group"
+                              >
+                                <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white font-mono font-bold text-[11px] shrink-0 mt-0.5">
+                                  {office.postcode}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-xs text-slate-900 group-hover:text-amber-900">
+                                      {office.city}
+                                    </span>
+                                    {office.district && (
+                                      <span className="text-[10px] text-slate-500">
+                                        ({office.district}, {office.region})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-slate-600 truncate mt-0.5">
+                                    <b>{office.name}:</b> {office.address}
+                                  </div>
+                                  {office.workHours && (
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                      {office.workHours}
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Quick Suggestions Pills */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <span className="text-amber-800/80 font-medium">Швидкий вибір:</span>
+                      {[
+                        { code: '22600', name: 'Оратів' },
+                        { code: '21050', name: 'Вінниця (Головпоштамт)' },
+                        { code: '22700', name: 'Іллінці' },
+                        { code: '22500', name: 'Липовець' },
+                        { code: '01001', name: 'Київ' },
+                        { code: '79000', name: 'Львів' }
+                      ].map((item) => (
+                        <button
+                          key={item.code}
+                          type="button"
+                          onClick={() => {
+                            const found = getUkrposhtaByPostcode(item.code);
+                            if (found) handleSelectUkrposhtaOffice(found);
+                          }}
+                          className="px-2 py-0.5 bg-amber-100/80 hover:bg-amber-200 text-amber-900 rounded-md font-mono text-[10px] font-bold transition-colors cursor-pointer"
+                        >
+                          {item.code} ({item.name})
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Confirmed Selection Banner */}
+                    {selectedUkrposhtaOffice && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 flex items-start gap-2.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <div className="text-xs">
+                          <b className="text-emerald-900">Відділення обрано:</b>{' '}
+                          <span className="font-mono font-bold">[{selectedUkrposhtaOffice.postcode}]</span> {selectedUkrposhtaOffice.city}, {selectedUkrposhtaOffice.name} ({selectedUkrposhtaOffice.address})
+                          {selectedUkrposhtaOffice.workHours && (
+                            <div className="text-[10px] text-emerald-700 mt-0.5 font-normal">
+                              Графік роботи: {selectedUkrposhtaOffice.workHours}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Detailed Inputs (Auto-filled or editable) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Поштовий індекс *
+                          Поштовий індекс (5 цифр) *
                         </label>
                         <input
                           type="text"
                           required
                           maxLength={5}
-                          placeholder="напр., 22600"
+                          placeholder="22600"
                           value={upIndex}
-                          onChange={(e) => setUpIndex(e.target.value.replace(/\D/g, ''))}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none font-mono"
+                          onChange={(e) => handleUkrposhtaIndexInput(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white outline-none font-mono font-bold focus:border-amber-500 shadow-2xs"
                         />
+                        <span className="text-[9px] text-slate-400 mt-0.5 block">Введіть 5 цифр для автопідбору</span>
                       </div>
+
                       <div className="sm:col-span-2">
                         <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Населений пункт (місто / село) *
+                          Населений пункт (місто / село) та область *
                         </label>
                         <input
                           type="text"
                           required
-                          placeholder="напр., с. Оратів, Вінницька обл."
+                          placeholder="напр., смт Оратів, Вінницька обл."
                           value={upCity}
                           onChange={(e) => setUpCity(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white outline-none focus:border-amber-500 shadow-2xs"
                         />
                       </div>
                     </div>
+
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Номер відділення або адреса *
+                        Номер відділення Укрпошти або адреса *
                       </label>
                       <input
                         type="text"
                         required
-                        placeholder="напр., Відділення зв'язку або вул. Миру, 12"
+                        placeholder="напр., ВПЗ Оратів (вул. Героїв Майдану, 78) або адреса для доставки"
                         value={upAddress}
                         onChange={(e) => setUpAddress(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white outline-none focus:border-amber-500 shadow-2xs font-medium"
                       />
                     </div>
                   </div>

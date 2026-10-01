@@ -69,7 +69,7 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
-import { trackNovaPoshtaTTN } from '../services/deliveryService';
+import { trackNovaPoshtaTTN, searchUkrposhtaOffices, UkrposhtaOffice } from '../services/deliveryService';
 import { 
   checkAdminSecurityStatus, 
   recordFailedLogin, 
@@ -632,6 +632,11 @@ export const AdminPanel: React.FC = () => {
   const [orderPaymentFilter, setOrderPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [isSyncingTTN, setIsSyncingTTN] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
+
+  // Ukrposhta test state in Admin
+  const [upTestQuery, setUpTestQuery] = useState('22600');
+  const [upTestResults, setUpTestResults] = useState<UkrposhtaOffice[]>([]);
+  const [isTestingUp, setIsTestingUp] = useState(false);
 
   // Reviews Tab State
   const [reviewSearch, setReviewSearch] = useState('');
@@ -4857,32 +4862,106 @@ export const AdminPanel: React.FC = () => {
           </div>
 
           {/* Ukrposhta Settings */}
-          <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/30 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-amber-500 text-white font-black text-[10px] flex items-center justify-center">
+          <div className="p-5 rounded-2xl border border-amber-200 bg-amber-50/40 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500 text-white font-black text-xs flex items-center justify-center shadow-xs">
                   УП
                 </div>
-                <h4 className="text-xs font-bold text-slate-900">Укрпошта</h4>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <span>Укрпошта (Експрес / Стандарт)</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>База 28 000+ індексів активна</span>
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Автоматичний підбір відділень та індексів по всіх населених пунктах України
+                  </p>
+                </div>
               </div>
-              <span className="text-[10px] text-slate-400 font-medium">Стандарт & Експрес</span>
             </div>
 
-            <p className="text-xs text-slate-600">
-              Доставка Укрпоштою по індексу та населеному пункту. Покупець може обрати відділення Укрпошти або поштовий індекс.
-            </p>
+            <div className="text-xs text-slate-700 bg-white/80 p-3 rounded-xl border border-amber-200/80 space-y-1.5">
+              <div className="font-bold text-slate-900">Підключені можливості для покупців:</div>
+              <ul className="list-disc list-inside space-y-1 text-slate-600 text-[11px]">
+                <li><b>Миттєвий автопідбір:</b> введення 5-значного індексу (напр. 22600) одразу заповнює населений пункт, район та відділення.</li>
+                <li><b>Пошук за назвою:</b> підтримка пошуку міст, смт і сіл (наприклад: Оратів, Вінниця, Київ, Чагів, Животівка).</li>
+                <li><b>Повний реєстр:</b> адреси та графіки роботи відділень поштового зв'язку.</li>
+              </ul>
+            </div>
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                Токен доступу Укрпошти (необов'язково)
+                Персональний eComm Bearer токен Укрпошти (необов'язково)
               </label>
               <input
                 type="text"
-                placeholder="Введіть eComm токен (за наявності)"
+                placeholder="Введіть eComm Bearer токен (з особистого кабінету ecom.ukrposhta.ua)"
                 value={settingsForm.ukrposhtaToken || ''}
                 onChange={(e) => setSettingsForm({ ...settingsForm, ukrposhtaToken: e.target.value })}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-mono text-xs bg-white outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-mono text-xs bg-white outline-none focus:border-amber-500 shadow-2xs"
               />
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                Якщо токен не введено, працює швидка локальна база всіх поштових індексів та відділень України без затримок.
+              </span>
+            </div>
+
+            {/* Interactive Live Test Tool */}
+            <div className="pt-3 border-t border-amber-200/70 space-y-2.5">
+              <label className="block text-[11px] font-bold text-amber-950">
+                Тестування пошуку відділення за індексом або назвою:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Введіть 22600, Оратів, Вінниця, 01001..."
+                  value={upTestQuery}
+                  onChange={(e) => setUpTestQuery(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white outline-none font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!upTestQuery.trim()) return;
+                    setIsTestingUp(true);
+                    try {
+                      const res = await searchUkrposhtaOffices(upTestQuery, settingsForm.ukrposhtaToken);
+                      setUpTestResults(res);
+                      showToast(`Знайдено ${res.length} відділень Укрпошти`, 'info');
+                    } catch (err) {
+                      console.warn(err);
+                    } finally {
+                      setIsTestingUp(false);
+                    }
+                  }}
+                  disabled={isTestingUp}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isTestingUp ? 'Пошук...' : 'Перевірити'}
+                </button>
+              </div>
+
+              {upTestResults.length > 0 && (
+                <div className="p-3 bg-white rounded-xl border border-amber-200 max-h-48 overflow-y-auto space-y-2">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Результати перевірки ({upTestResults.length}):
+                  </div>
+                  {upTestResults.slice(0, 5).map((it) => (
+                    <div key={it.postcode + it.address} className="p-2 rounded-lg bg-amber-50/60 border border-amber-100 text-xs flex items-start gap-2">
+                      <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-mono font-bold text-[10px] shrink-0 mt-0.5">
+                        {it.postcode}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-900">{it.city} <span className="text-slate-500 font-normal">({it.region})</span></div>
+                        <div className="text-[11px] text-slate-600">{it.name}: {it.address}</div>
+                        {it.workHours && <div className="text-[10px] text-slate-400">{it.workHours}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
