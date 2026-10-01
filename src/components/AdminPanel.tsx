@@ -4770,13 +4770,16 @@ export const AdminPanel: React.FC = () => {
                     showToast('Введіть Bot Token та Chat ID для тесту', 'error');
                     return;
                   }
+                  // Auto-save settings so placeOrder immediately has them
+                  updateSiteSettings(settingsForm);
+
                   const success = await sendTelegramAlert(
                     settingsForm.botToken,
                     settingsForm.chatId,
                     "✅ Тестове сповіщення від магазину ISKRA. З'єднання працює ідеально!"
                   );
                   if (success) {
-                    showToast('Тестове повідомлення надіслано в Telegram!', 'success');
+                    showToast('Тестове повідомлення надіслано в Telegram та налаштування збережено!', 'success');
                   } else {
                     showToast('Помилка надсилання в Telegram (перевірте токен, chat ID та чи натиснутий /start у боті)', 'error');
                   }

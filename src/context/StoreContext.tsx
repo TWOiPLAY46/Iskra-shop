@@ -990,7 +990,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // Telegram Bot notification
-    if (siteSettings.botToken && siteSettings.chatId) {
+    let activeBotToken = siteSettings.botToken;
+    let activeChatId = siteSettings.chatId;
+    if (!activeBotToken || !activeChatId) {
+      try {
+        const savedSettings = JSON.parse(localStorage.getItem('iskra_settings_react') || '{}');
+        if (savedSettings.botToken) activeBotToken = savedSettings.botToken;
+        if (savedSettings.chatId) activeChatId = savedSettings.chatId;
+      } catch (e) {}
+    }
+
+    if (activeBotToken && activeChatId) {
       try {
         const itemsList = cart
           .map((i) => `• ${i.name} — ${i.qty} шт. (${i.price} грн/${i.unit.replace('грн/', '')})`)
@@ -1005,7 +1015,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           `📦 *Товари:*\n${itemsList}` +
           (orderData.notes ? `\n\n📝 *Коментар:* ${orderData.notes}` : '');
 
-        sendTelegramAlert(siteSettings.botToken, siteSettings.chatId, tgMsg).catch((err) =>
+        sendTelegramAlert(activeBotToken, activeChatId, tgMsg).catch((err) =>
           console.warn('Telegram notify error:', err)
         );
       } catch (err) {
