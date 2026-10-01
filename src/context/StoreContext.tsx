@@ -928,6 +928,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       date: new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }),
       status: 'Створено',
       paymentMethod: orderData.paymentMethod || 'cash_on_delivery',
+      isPaid: orderData.paymentMethod === 'card_online',
+      paidAt: orderData.paymentMethod === 'card_online' ? new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }) : undefined,
+      paymentProvider: orderData.paymentMethod === 'card_online' ? 'Картка онлайн (3D-Secure / monoPay)' : undefined,
       notes: orderData.notes
     };
 
@@ -1007,7 +1010,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    const next = orders.map((o) => (o.id === orderId ? { ...o, status } : o));
+    const next = orders.map((o) => {
+      if (o.id === orderId) {
+        // AUTOMATION: If order is delivered and was cash on delivery, auto-mark payment as received from post carrier
+        const shouldAutoPay = status === 'Доставлено' && o.paymentMethod === 'cash_on_delivery';
+        const isPaid = shouldAutoPay ? true : o.isPaid;
+        const paidAt = shouldAutoPay && !o.paidAt ? new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }) : o.paidAt;
+        const paymentProvider = shouldAutoPay && !o.paymentProvider ? 'NovaPay (Післяплата Нова Пошта)' : o.paymentProvider;
+
+        return { 
+          ...o, 
+          status, 
+          isPaid,
+          paidAt,
+          paymentProvider
+        };
+      }
+      return o;
+    });
     setOrders(next);
     showToast(`Статус замовлення №${orderId} змінено на "${status}"`, 'info');
     if (firebaseConfig.enabled) {

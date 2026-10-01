@@ -63,10 +63,13 @@ import {
   Check,
   Truck,
   CreditCard,
+  Banknote,
+  FileText,
   X
 } from 'lucide-react';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
+import { trackNovaPoshtaTTN } from '../services/deliveryService';
 import { 
   checkAdminSecurityStatus, 
   recordFailedLogin, 
@@ -626,6 +629,8 @@ export const AdminPanel: React.FC = () => {
   const [isProcurementModalOpen, setIsProcurementModalOpen] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [orderFilterStatus, setOrderFilterStatus] = useState<string>('all');
+  const [orderPaymentFilter, setOrderPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [isSyncingTTN, setIsSyncingTTN] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
 
   // Reviews Tab State
@@ -2894,7 +2899,7 @@ export const AdminPanel: React.FC = () => {
       {activeTab === 'orders' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-2 flex-1 max-w-xl">
+            <div className="flex flex-wrap items-center gap-2 flex-1 max-w-2xl">
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -2902,22 +2907,85 @@ export const AdminPanel: React.FC = () => {
                   placeholder="Пошук за номером, клієнтом або телефоном..."
                   value={orderSearch}
                   onChange={(e) => setOrderSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-none"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-none focus:border-orange-500"
                 />
               </div>
 
+              {/* Status filter */}
               <select
                 value={orderFilterStatus}
                 onChange={(e) => setOrderFilterStatus(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-medium"
+                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-medium outline-none"
               >
                 <option value="all">Всі статуси</option>
-                <option value="Створено">Створено</option>
+                <option value="Створено">1. Оформлено</option>
+                <option value="Збирається">2. Комплектується</option>
+                <option value="Відправлено">3. В дорозі</option>
+                <option value="Доставлено">4. Доставлено</option>
                 <option value="Оплачено">Оплачено</option>
-                <option value="Збирається">Збирається</option>
-                <option value="Відправлено">Відправлено</option>
-                <option value="Доставлено">Доставлено</option>
               </select>
+
+              {/* Payment filter */}
+              <select
+                value={orderPaymentFilter}
+                onChange={(e) => setOrderPaymentFilter(e.target.value as any)}
+                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-medium outline-none"
+              >
+                <option value="all">Всі оплати</option>
+                <option value="paid">Тільки оплачені (✓)</option>
+                <option value="unpaid">Очікують оплати (Наложка / IBAN)</option>
+              </select>
+
+              {/* Live Nova Poshta Sync button */}
+              <button
+                type="button"
+                disabled={isSyncingTTN}
+                onClick={async () => {
+                  const activeWithTtn = orders.filter(o => o.ttn && o.ttn.trim().length >= 10 && o.status !== 'Доставлено');
+                  if (activeWithTtn.length === 0) {
+                    showToast('Немає активних замовлень із номером ТТН для перевірки', 'info');
+                    return;
+                  }
+                  setIsSyncingTTN(true);
+                  let updatedCount = 0;
+                  try {
+                    for (const ord of activeWithTtn) {
+                      try {
+                        const res = await trackNovaPoshtaTTN(
+                          ord.ttn!,
+                          ord.phone,
+                          siteSettings.novaPoshtaApiKey,
+                          ord.date,
+                          ord.status,
+                          ord.city
+                        );
+                        if (res.isSuccess) {
+                          if (res.statusCategory === 'delivered' && ord.status !== 'Доставлено') {
+                            updateOrderStatus(ord.id, 'Доставлено');
+                            updatedCount++;
+                          } else if (res.statusCategory === 'in_transit' && ord.status !== 'Відправлено' && ord.status !== 'Доставлено') {
+                            updateOrderStatus(ord.id, 'Відправлено');
+                          }
+                        }
+                      } catch (err) {
+                        console.warn('Sync error for TTN:', ord.ttn, err);
+                      }
+                    }
+                    if (updatedCount > 0) {
+                      showToast(`Синхронізація успішна! Оновлено ${updatedCount} замовлень до «Доставлено» та автоматично підтверджено оплату накладених платежів`, 'success');
+                    } else {
+                      showToast(`Перевірено ${activeWithTtn.length} ТТН: всі статуси актуальні`, 'success');
+                    }
+                  } finally {
+                    setIsSyncingTTN(false);
+                  }
+                }}
+                className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                title="Автоматично перевірити всі активні ТТН через офіційне API Нової Пошти"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingTTN ? 'animate-spin' : ''}`} />
+                <span>{isSyncingTTN ? 'Синхронізація...' : 'Перевірити ТТН у Новій Пошті'}</span>
+              </button>
             </div>
 
             {confirmClearAllOrders ? (
@@ -2962,195 +3030,382 @@ export const AdminPanel: React.FC = () => {
                 .filter((o) => {
                   const matchQ = o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
                     o.fio.toLowerCase().includes(orderSearch.toLowerCase()) ||
-                    o.phone.toLowerCase().includes(orderSearch.toLowerCase());
+                    o.phone.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                    (o.ttn && o.ttn.includes(orderSearch));
                   const matchStatus = orderFilterStatus === 'all' || o.status === orderFilterStatus;
-                  return matchQ && matchStatus;
+                  const isPaid = o.isPaid === true || (o.paymentMethod === 'card_online' && (o as any).paymentStatus !== 'failed');
+                  const matchPayment = orderPaymentFilter === 'all'
+                    ? true
+                    : orderPaymentFilter === 'paid'
+                    ? isPaid
+                    : !isPaid;
+
+                  return matchQ && matchStatus && matchPayment;
                 })
-                .map((o) => (
-                  <div key={o.id} className="bg-slate-50 rounded-2xl border border-slate-200 p-4 sm:p-5 text-xs space-y-3.5 shadow-2xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 font-display text-sm">
-                          Замовлення №{o.id}
-                        </span>
-                        <span className="text-slate-400 font-mono">({o.date})</span>
+                .map((o) => {
+                  const isPaid = o.isPaid === true || (o.paymentMethod === 'card_online' && (o as any).paymentStatus !== 'failed');
+                  const isCashOnDelivery = o.paymentMethod === 'cash_on_delivery';
+
+                  return (
+                    <div key={o.id} className="bg-slate-50 rounded-2xl border border-slate-200 p-4 sm:p-5 text-xs space-y-4 shadow-2xs">
+                      {/* 1. Header with IDs and Status dropdown */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 font-display text-sm">
+                            Замовлення №{o.id}
+                          </span>
+                          <span className="text-slate-400 font-mono">({o.date})</span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Edit order button */}
+                          <button
+                            type="button"
+                            onClick={() => setEditingOrder({ ...o, items: o.items.map(it => ({ ...it })) })}
+                            className="px-2.5 py-1 text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-100 rounded-lg border border-slate-300 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                            title="Редагувати замовлення"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-orange-600" />
+                            <span>Редагувати</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => printOrderSlip(o)}
+                            className="p-1.5 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-1 font-semibold transition-colors"
+                            title="Друкувати товарний чек"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Чек</span>
+                          </button>
+
+                          <select
+                            value={o.status}
+                            onChange={(e) => updateOrderStatus(o.id, e.target.value as OrderStatus)}
+                            className="px-2.5 py-1 rounded-lg border border-slate-300 font-bold bg-white text-slate-800 outline-none"
+                          >
+                            <option value="Створено">1. Оформлено</option>
+                            <option value="Збирається">2. Комплектується</option>
+                            <option value="Відправлено">3. В дорозі</option>
+                            <option value="Доставлено">4. Доставлено</option>
+                            <option value="Оплачено">Оплачено (Очікує збирання)</option>
+                          </select>
+
+                          {/* Safe Delete order button with inline confirm */}
+                          {orderToDelete === o.id ? (
+                            <div className="flex items-center gap-1.5 animate-in fade-in bg-rose-50 p-1 rounded-lg border border-rose-200">
+                              <span className="text-[11px] font-bold text-rose-700">Видалити?</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  deleteOrder(o.id);
+                                  setOrderToDelete(null);
+                                }}
+                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold shadow-xs transition-colors"
+                              >
+                                Так
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOrderToDelete(null)}
+                                className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[11px] font-medium transition-colors"
+                              >
+                                Ні
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setOrderToDelete(o.id)}
+                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Видалити замовлення"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        {/* Edit order button */}
-                        <button
-                          type="button"
-                          onClick={() => setEditingOrder({ ...o, items: o.items.map(it => ({ ...it })) })}
-                          className="px-2.5 py-1 text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-100 rounded-lg border border-slate-300 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-2xs cursor-pointer"
-                          title="Редагувати замовлення"
-                        >
-                          <Pencil className="w-3.5 h-3.5 text-orange-600" />
-                          <span>Редагувати</span>
-                        </button>
+                      {/* 2. Visual 5-Stage Pipeline on Admin Order Card */}
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                        <div className="flex items-center justify-between text-[11px] mb-2">
+                          <span className="font-bold text-slate-700">Етап виконання замовлення:</span>
+                          <span className="font-semibold text-slate-500">
+                            Поточний статус: <b className="text-slate-900">{o.status}</b>
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-5 gap-1.5 sm:gap-2 text-center text-[10px]">
+                          {/* 1. Оформлено */}
+                          <button
+                            type="button"
+                            onClick={() => updateOrderStatus(o.id, 'Створено')}
+                            className={`p-1.5 rounded-lg border flex flex-col items-center gap-1 cursor-pointer transition-all ${
+                              o.status === 'Створено' 
+                                ? 'bg-sky-50 border-sky-400 text-sky-900 font-bold ring-2 ring-sky-100'
+                                : 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium'
+                            }`}
+                            title="Встановити статус: Створено (Оформлено)"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>1. Оформлено</span>
+                            <span className="text-[9px] opacity-75">{o.status === 'Створено' ? 'Поточний' : '✓ Прийнято'}</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => printOrderSlip(o)}
-                          className="p-1.5 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-1 font-semibold transition-colors"
-                          title="Друкувати товарний чек"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>Чек</span>
-                        </button>
+                          {/* 2. Оплата */}
+                          <div className={`p-1.5 rounded-lg border flex flex-col items-center gap-1 ${
+                            isPaid
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold ring-2 ring-emerald-100'
+                              : 'bg-amber-50 border-amber-300 text-amber-900 font-semibold'
+                          }`}>
+                            {isCashOnDelivery ? <Banknote className="w-3.5 h-3.5" /> : <CreditCard className="w-3.5 h-3.5" />}
+                            <span>2. Оплата</span>
+                            <span className="text-[9px]">
+                              {isPaid ? '✓ Сплачено' : isCashOnDelivery ? 'Наложка' : 'Очікує'}
+                            </span>
+                          </div>
 
-                        <select
-                          value={o.status}
-                          onChange={(e) => updateOrderStatus(o.id, e.target.value as OrderStatus)}
-                          className="px-2.5 py-1 rounded-lg border border-slate-300 font-bold bg-white text-slate-800 outline-none"
-                        >
-                          <option value="Створено">Створено</option>
-                          <option value="Оплачено">Оплачено</option>
-                          <option value="Збирається">Збирається</option>
-                          <option value="Відправлено">Відправлено</option>
-                          <option value="Доставлено">Доставлено</option>
-                        </select>
+                          {/* 3. Комплектується */}
+                          <button
+                            type="button"
+                            onClick={() => updateOrderStatus(o.id, 'Збирається')}
+                            className={`p-1.5 rounded-lg border flex flex-col items-center gap-1 cursor-pointer transition-all hover:scale-102 ${
+                              o.status === 'Збирається'
+                                ? 'bg-sky-50 border-sky-400 text-sky-900 font-bold ring-2 ring-sky-100'
+                                : ['Відправлено', 'Доставлено'].includes(o.status)
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium'
+                                : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
+                            }`}
+                            title="Встановити статус: Збирається (Комплектується)"
+                          >
+                            <Package className="w-3.5 h-3.5" />
+                            <span>3. Комплектується</span>
+                            <span className="text-[9px]">
+                              {o.status === 'Збирається' ? 'В процесі' : ['Відправлено', 'Доставлено'].includes(o.status) ? '✓ Зібрано' : 'Очікує'}
+                            </span>
+                          </button>
 
-                        {/* Safe Delete order button with inline confirm */}
-                        {orderToDelete === o.id ? (
-                          <div className="flex items-center gap-1.5 animate-in fade-in bg-rose-50 p-1 rounded-lg border border-rose-200">
-                            <span className="text-[11px] font-bold text-rose-700">Видалити?</span>
+                          {/* 4. В дорозі */}
+                          <button
+                            type="button"
+                            onClick={() => updateOrderStatus(o.id, 'Відправлено')}
+                            className={`p-1.5 rounded-lg border flex flex-col items-center gap-1 cursor-pointer transition-all hover:scale-102 ${
+                              o.status === 'Відправлено'
+                                ? 'bg-sky-50 border-sky-400 text-sky-900 font-bold ring-2 ring-sky-100'
+                                : o.status === 'Доставлено'
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium'
+                                : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
+                            }`}
+                            title="Встановити статус: Відправлено (В дорозі)"
+                          >
+                            <Truck className="w-3.5 h-3.5" />
+                            <span>4. В дорозі</span>
+                            <span className="text-[9px]">
+                              {o.status === 'Відправлено' ? 'В дорозі' : o.status === 'Доставлено' ? '✓ Пройдено' : 'Очікує'}
+                            </span>
+                          </button>
+
+                          {/* 5. Доставлено */}
+                          <button
+                            type="button"
+                            onClick={() => updateOrderStatus(o.id, 'Доставлено')}
+                            className={`p-1.5 rounded-lg border flex flex-col items-center gap-1 cursor-pointer transition-all hover:scale-102 ${
+                              o.status === 'Доставлено'
+                                ? 'bg-emerald-600 text-white font-bold ring-2 ring-emerald-200 shadow-xs'
+                                : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-700'
+                            }`}
+                            title="Встановити статус: Доставлено (Отримано покупцем)"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>5. Доставлено</span>
+                            <span className="text-[9px]">{o.status === 'Доставлено' ? '✓ Отримано' : 'Завершити'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 3. Customer Info, Delivery, & Payment Action Button */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <p>
+                              <b>Клієнт:</b> <span className="font-semibold text-slate-900">{o.fio}</span>
+                            </p>
+                            {/* Quick client card trigger */}
                             <button
                               type="button"
                               onClick={() => {
-                                deleteOrder(o.id);
-                                setOrderToDelete(null);
+                                const existing = clients[o.phone] || {
+                                  name: o.fio,
+                                  balance: 0,
+                                  discount: 0,
+                                  city: o.city,
+                                  notes: ''
+                                };
+                                setClientForm({
+                                  phone: o.phone,
+                                  originalPhone: o.phone,
+                                  name: existing.name || o.fio,
+                                  balance: existing.balance || 0,
+                                  discount: existing.discount || 0,
+                                  city: existing.city || o.city || '',
+                                  notes: existing.notes || '',
+                                  isNew: !clients[o.phone]
+                                });
+                                setClientModalOpen(true);
                               }}
-                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold shadow-xs transition-colors"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200/80 px-2 py-0.5 rounded-lg transition-colors"
+                              title="Редагувати клієнта"
                             >
-                              Так
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setOrderToDelete(null)}
-                              className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[11px] font-medium transition-colors"
-                            >
-                              Ні
+                              <UserCheck className="w-3 h-3" />
+                              <span>Картка клієнта</span>
                             </button>
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setOrderToDelete(o.id)}
-                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Видалити замовлення"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Customer info & TTN */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
                           <p>
-                            <b>Клієнт:</b> <span className="font-semibold text-slate-900">{o.fio}</span>
+                            <b>Телефон:</b>{' '}
+                            <a href={`tel:${o.phone}`} className="text-orange-600 font-semibold hover:underline">
+                              {o.phone}
+                            </a>
                           </p>
-                          {/* Quick client card trigger */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const existing = clients[o.phone] || {
-                                name: o.fio,
-                                balance: 0,
-                                discount: 0,
-                                city: o.city,
-                                notes: ''
-                              };
-                              setClientForm({
-                                phone: o.phone,
-                                originalPhone: o.phone,
-                                name: existing.name || o.fio,
-                                balance: existing.balance || 0,
-                                discount: existing.discount || 0,
-                                city: existing.city || o.city || '',
-                                notes: existing.notes || '',
-                                isNew: !clients[o.phone]
-                              });
-                              setClientModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200/80 px-2 py-0.5 rounded-lg transition-colors"
-                            title="Редагувати клієнта"
-                          >
-                            <UserCheck className="w-3 h-3" />
-                            <span>Картка клієнта</span>
-                          </button>
-                        </div>
-
-                        <p>
-                          <b>Телефон:</b>{' '}
-                          <a href={`tel:${o.phone}`} className="text-orange-600 font-semibold hover:underline">
-                            {o.phone}
-                          </a>
-                        </p>
-                        {o.city && (
-                          <p><b>Місто:</b> {o.city}</p>
-                        )}
-                        <p><b>Доставка:</b> {o.delivery}</p>
-                        {o.paymentMethod && (
+                          {o.city && (
+                            <p><b>Місто:</b> {o.city}</p>
+                          )}
+                          <p><b>Доставка:</b> {o.delivery}</p>
                           <p>
-                            <b>Оплата:</b>{' '}
+                            <b>Спосіб оплати:</b>{' '}
                             <span className="font-semibold text-slate-800">
-                              {o.paymentMethod === 'cash_on_delivery' && 'Накладений платіж'}
+                              {o.paymentMethod === 'cash_on_delivery' && 'Накладений платіж (післяплата на пошті)'}
                               {o.paymentMethod === 'card_online' && 'Оплата карткою онлайн'}
-                              {o.paymentMethod === 'bank_invoice' && 'Безготівковий розрахунок'}
+                              {o.paymentMethod === 'bank_invoice' && 'Безготівковий розрахунок (IBAN)'}
                             </span>
                           </p>
-                        )}
-                        <p className="pt-1">
-                          <b>Сума:</b>{' '}
-                          <span className="text-emerald-700 font-black text-sm tabular-nums">
-                            {o.total.toFixed(2)} грн
-                          </span>
-                        </p>
-                        {o.notes && (
-                          <p className="text-[11px] text-slate-500 bg-amber-50/80 border border-amber-200/60 p-2 rounded-xl mt-1">
-                            <b>Коментар:</b> {o.notes}
-                          </p>
-                        )}
-                      </div>
 
-                      <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-200 self-start">
-                        <label className="block text-[11px] font-bold text-slate-700">
-                          Номер ТТН (Нова Пошта):
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            defaultValue={o.ttn || ''}
-                            id={`ttn-input-${o.id}`}
-                            placeholder="напр., 20450891234567"
-                            className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono outline-none focus:border-orange-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const val = (document.getElementById(`ttn-input-${o.id}`) as HTMLInputElement)?.value;
-                              updateOrderTtn(o.id, (val || '').trim());
-                            }}
-                            className="px-3 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-lg hover:bg-slate-800 transition-colors shrink-0"
-                          >
-                            Зберегти ТТН
-                          </button>
+                          {/* 4. DEDICATED PROMINENT PAYMENT STATUS & ACTION BUTTON */}
+                          <div className="pt-1.5 pb-1">
+                            {isPaid ? (
+                              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 shadow-2xs">
+                                <div className="flex items-center gap-2">
+                                  <div className="p-1 rounded-lg bg-emerald-600 text-white">
+                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-black tracking-tight text-emerald-900 flex items-center gap-1.5">
+                                      <span>ОПЛАЧЕНО 100%</span>
+                                      <span className="text-[11px] font-medium text-emerald-700">
+                                        ({o.paymentProvider || (o.paymentMethod === 'card_online' ? 'Автоматичний онлайн-еквайринг' : isCashOnDelivery ? 'Накладений платіж отримано' : 'Рахунок IBAN')})
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-emerald-700">
+                                      Сума <b>{o.total.toFixed(2)} грн</b> зарахована {o.paidAt ? `· ${o.paidAt}` : ''}
+                                      {o.paymentTransactionId && <span className="font-mono text-emerald-800 ml-1">[{o.paymentTransactionId}]</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    editOrder(o.id, { isPaid: false });
+                                    showToast(`Позначку оплати для замовлення №${o.id} скасовано`, 'info');
+                                  }}
+                                  className="text-[11px] text-slate-500 hover:text-rose-600 underline font-semibold transition-colors cursor-pointer"
+                                  title="Скасувати статус оплати, якщо позначено помилково"
+                                >
+                                  Скасувати позначку
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 shadow-2xs">
+                                <div className="flex items-center gap-2">
+                                  <div className="p-1 rounded-lg bg-amber-500 text-white">
+                                    <Clock className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-bold text-amber-950">
+                                      {isCashOnDelivery 
+                                        ? 'Накладений платіж (Очікує оплати у відділенні)' 
+                                        : o.paymentMethod === 'bank_invoice' 
+                                        ? 'Рахунок IBAN (Очікує переказу від клієнта)' 
+                                        : 'Очікує онлайн-оплати покупцем'}
+                                    </div>
+                                    <div className="text-[10px] text-amber-800">
+                                      Сума до сплати: <b>{o.total.toFixed(2)} грн</b>
+                                      {isCashOnDelivery && (
+                                        <span className="hidden sm:inline text-amber-700 ml-1">
+                                          (Автоматично зарахується при видачі посилки)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    editOrder(o.id, { 
+                                      isPaid: true,
+                                      paidAt: new Date().toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }),
+                                      paymentProvider: isCashOnDelivery ? 'Готівка / Термінал у відділенні' : 'Ручне підтвердження менеджером'
+                                    });
+                                    showToast(`Замовлення №${o.id} успішно позначено як ОПЛАЧЕНО!`, 'success');
+                                  }}
+                                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-lg text-xs font-black shadow-xs transition-transform active:scale-95 flex items-center gap-1.5 cursor-pointer ml-auto"
+                                  title="Натисніть, коли клієнт реально сплатив замовлення"
+                                >
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                  <span>Позначити як ОПЛАЧЕНО</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <p className="pt-1">
+                            <b>Сума замовлення:</b>{' '}
+                            <span className="text-emerald-700 font-black text-sm tabular-nums">
+                              {o.total.toFixed(2)} грн
+                            </span>
+                          </p>
+                          {o.notes && (
+                            <p className="text-[11px] text-slate-500 bg-amber-50/80 border border-amber-200/60 p-2 rounded-xl mt-1">
+                              <b>Коментар:</b> {o.notes}
+                            </p>
+                          )}
                         </div>
 
-                        {o.ttn && (
-                          <div className="pt-2">
-                            <LiveTrackingWidget 
-                              order={o}
-                              apiKey={siteSettings.novaPoshtaApiKey}
-                              onStatusAutoUpdate={updateOrderStatus}
+                        {/* TTN and Live Tracking */}
+                        <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-200 self-start">
+                          <label className="block text-[11px] font-bold text-slate-700">
+                            Номер ТТН (Нова Пошта):
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              defaultValue={o.ttn || ''}
+                              id={`ttn-input-${o.id}`}
+                              placeholder="напр., 20450891234567"
+                              className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono outline-none focus:border-orange-500"
                             />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const val = (document.getElementById(`ttn-input-${o.id}`) as HTMLInputElement)?.value;
+                                updateOrderTtn(o.id, (val || '').trim());
+                              }}
+                              className="px-3 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-lg hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+                            >
+                              Зберегти ТТН
+                            </button>
                           </div>
-                        )}
+
+                          {o.ttn && (
+                            <div className="pt-2">
+                              <LiveTrackingWidget 
+                                order={o}
+                                apiKey={siteSettings.novaPoshtaApiKey}
+                                onStatusAutoUpdate={updateOrderStatus}
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
                     {/* Order items */}
                     <div className="bg-white p-3 rounded-xl border border-slate-200">
@@ -3163,9 +3418,9 @@ export const AdminPanel: React.FC = () => {
                         ))}
                       </ul>
                     </div>
-
                   </div>
-                ))
+                );
+              })
             )}
           </div>
 

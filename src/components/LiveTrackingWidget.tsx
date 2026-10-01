@@ -26,7 +26,14 @@ export const LiveTrackingWidget: React.FC<LiveTrackingWidgetProps> = ({
     if (!ttnNumber) return;
     setIsLoading(true);
     try {
-      const res = await trackNovaPoshtaTTN(ttnNumber, order.phone, apiKey);
+      const res = await trackNovaPoshtaTTN(
+        ttnNumber, 
+        order.phone, 
+        apiKey, 
+        order.date, 
+        order.status, 
+        order.city
+      );
       setTrackingData(res);
 
       // Auto update order status in store/cloud if status progressed

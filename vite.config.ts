@@ -18,6 +18,14 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/api/novaposhta': {
+          target: 'https://api.novaposhta.ua/v2.0/json/',
+          changeOrigin: true,
+          rewrite: () => '',
+          secure: true,
+        },
+      },
     },
   };
 });

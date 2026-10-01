@@ -29,19 +29,23 @@ import {
   Sparkles,
   MapPin,
   CreditCard,
+  Banknote,
   FileText,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  Lock,
+  X
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
+import { OnlinePaymentModal } from './OnlinePaymentModal';
 
-const ORDER_STEPS: { status: OrderStatus; label: string; desc: string }[] = [
-  { status: 'Створено', label: 'Оформлено', desc: 'Замовлення прийнято в систему' },
-  { status: 'Оплачено', label: 'Оплачено', desc: 'Кошти або спосіб оплати підтверджено' },
-  { status: 'Збирається', label: 'Комплектується', desc: 'Комплектується на складі магазину' },
-  { status: 'Відправлено', label: 'В дорозі', desc: 'Передано перевізнику Нова Пошта' },
-  { status: 'Доставлено', label: 'Доставлено', desc: 'Готово до отримання або видано' }
+const ORDER_STEPS = [
+  { status: 'Створено' as OrderStatus, label: 'Оформлено', desc: 'Замовлення в системі', icon: FileText },
+  { status: 'Оплачено' as OrderStatus, label: 'Оплачено', desc: 'Оплату підтверджено', icon: CreditCard },
+  { status: 'Збирається' as OrderStatus, label: 'Комплектується', desc: 'Пакується на складі', icon: Package },
+  { status: 'Відправлено' as OrderStatus, label: 'В дорозі', desc: 'Передано перевізнику', icon: Truck },
+  { status: 'Доставлено' as OrderStatus, label: 'Доставлено', desc: 'Отримано покупцем', icon: CheckCircle2 }
 ];
 
 export const AccountView: React.FC = () => {
@@ -57,6 +61,7 @@ export const AccountView: React.FC = () => {
     siteSettings,
     setActiveView,
     updateOrderStatus,
+    editOrder,
     showToast
   } = useStore();
 
@@ -64,6 +69,11 @@ export const AccountView: React.FC = () => {
   const [inputPhone, setInputPhone] = useState('');
   const [inputName, setInputName] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  // Online Payment and IBAN Requisites Modals
+  const [payingOrder, setPayingOrder] = useState<Order | null>(null);
+  const [ibanModalOrder, setIbanModalOrder] = useState<Order | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Active view tab in account
   const [activeTab, setActiveTab] = useState<'orders' | 'track' | 'loyalty'>(() => {
@@ -741,6 +751,9 @@ export const AccountView: React.FC = () => {
                   {filteredOrders.map((order) => {
                     const currentIdx = ORDER_STEPS.findIndex(s => s.status === order.status);
                     const badge = getStatusBadge(order.status);
+                    const isOrderPaid = order.isPaid === true || (order.paymentMethod === 'card_online' && (order as any).paymentStatus !== 'failed');
+                    const isCashOnDelivery = order.paymentMethod === 'cash_on_delivery';
+                    const isBankInvoice = order.paymentMethod === 'bank_invoice';
 
                     return (
                       <div
@@ -800,61 +813,305 @@ export const AccountView: React.FC = () => {
                         </div>
 
                         {/* 2. Visual Multi-Step Progress Tracker */}
-                        <div className="p-5 sm:p-6 border-b border-slate-100 bg-white">
+                        <div className="p-4 sm:p-6 border-b border-slate-100 bg-gradient-to-b from-slate-50/70 to-white">
                           <div className="max-w-3xl mx-auto">
                             
-                            {/* Step labels and connectors */}
-                            <div className="grid grid-cols-5 gap-2 relative">
-                              
-                              {ORDER_STEPS.map((step, idx) => {
-                                const isPassed = idx < currentIdx;
-                                const isCurrent = idx === currentIdx;
+                            {/* Horizontal progress track line container */}
+                            <div className="relative">
+                              {/* Background track line */}
+                              <div className="absolute top-5 left-[8%] right-[8%] h-1 bg-slate-200/90 rounded-full z-0 hidden sm:block" />
+
+                              {/* Active filled track line with gradient */}
+                              {(() => {
+                                let pct = 0;
+                                if (order.status === 'Доставлено') pct = 100;
+                                else if (order.status === 'Відправлено') pct = 75;
+                                else if (order.status === 'Збирається') pct = 50;
+                                else if (order.status === 'Оплачено') pct = 25;
+                                else pct = 8;
 
                                 return (
-                                  <div key={step.status} className="flex flex-col items-center text-center relative group">
-                                    
-                                    {/* Circle Icon */}
-                                    <div
-                                      className={`w-9 h-9 rounded-2xl flex items-center justify-center text-xs font-bold transition-all duration-300 relative z-10 mb-2 ${
-                                        isPassed
-                                          ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
-                                          : isCurrent
-                                          ? 'bg-orange-600 text-white ring-4 ring-orange-100 shadow-md shadow-orange-600/30 animate-pulse'
-                                          : 'bg-slate-100 text-slate-400 border border-slate-200'
-                                      }`}
-                                    >
-                                      {isPassed ? (
-                                        <CheckCircle2 className="w-5 h-5" />
-                                      ) : isCurrent ? (
-                                        <Clock className="w-4 h-4" />
-                                      ) : (
-                                        <span>{idx + 1}</span>
-                                      )}
+                                  <div 
+                                    className="absolute top-5 left-[8%] h-1 bg-gradient-to-r from-emerald-500 via-sky-500 to-emerald-600 rounded-full transition-all duration-700 z-0 hidden sm:block"
+                                    style={{ width: `${Math.min(84, (pct / 100) * 84)}%` }}
+                                  />
+                                );
+                              })()}
+
+                              {/* 5 Steps Grid */}
+                              <div className="grid grid-cols-5 gap-1.5 sm:gap-3 relative z-10">
+                                {(() => {
+                                  const isCashOnDelivery = order.paymentMethod === 'cash_on_delivery';
+                                  const isBankInvoice = order.paymentMethod === 'bank_invoice';
+                                  const isOrderPaid = order.isPaid === true || (order.paymentMethod === 'card_online' && (order as any).paymentStatus !== 'failed');
+
+                                  const stepsConfig = [
+                                    {
+                                      id: 'created',
+                                      label: 'Оформлено',
+                                      sub: order.date.split(',')[0] || 'Прийнято',
+                                      icon: FileText,
+                                      isPassed: ['Оплачено', 'Збирається', 'Відправлено', 'Доставлено'].includes(order.status),
+                                      isCurrent: order.status === 'Створено',
+                                      badgeText: order.status === 'Створено' ? 'Поточний' : 'Прийнято',
+                                      badgeTheme: 'emerald'
+                                    },
+                                    {
+                                      id: 'payment',
+                                      label: isOrderPaid 
+                                        ? (isCashOnDelivery ? 'Оплачено на пошті' : isBankInvoice ? 'Оплачено IBAN' : 'Оплачено')
+                                        : (isCashOnDelivery ? 'Оплата на пошті' : isBankInvoice ? 'Рахунок IBAN' : 'Оплата карткою'),
+                                      sub: isOrderPaid
+                                        ? 'Оплату підтверджено'
+                                        : (isCashOnDelivery ? 'Накладений платіж' : isBankInvoice ? 'Очікує переказу' : 'Очікує оплати'),
+                                      icon: isCashOnDelivery ? Banknote : CreditCard,
+                                      isPassed: isOrderPaid,
+                                      isCurrent: !isOrderPaid && order.status === 'Оплачено',
+                                      badgeText: isOrderPaid ? 'Сплачено ✓' : isCashOnDelivery ? 'При отриманні' : 'Очікує',
+                                      badgeTheme: isOrderPaid ? 'emerald' : 'amber'
+                                    },
+                                    {
+                                      id: 'packing',
+                                      label: 'Комплектується',
+                                      sub: 'Пакується на складі',
+                                      icon: Package,
+                                      isPassed: ['Відправлено', 'Доставлено'].includes(order.status),
+                                      isCurrent: order.status === 'Збирається',
+                                      badgeText: ['Відправлено', 'Доставлено'].includes(order.status) ? 'Зібрано' : order.status === 'Збирається' ? 'В процесі' : 'Очікує',
+                                      badgeTheme: order.status === 'Збирається' ? 'sky' : 'emerald'
+                                    },
+                                    {
+                                      id: 'transit',
+                                      label: 'В дорозі',
+                                      sub: order.ttn ? `ТТН: ${order.ttn.slice(-6)}` : 'Передано перевізнику',
+                                      icon: Truck,
+                                      isPassed: order.status === 'Доставлено',
+                                      isCurrent: order.status === 'Відправлено',
+                                      badgeText: order.status === 'Доставлено' ? 'Доставлено' : order.status === 'Відправлено' ? 'Прямує' : 'Очікує',
+                                      badgeTheme: order.status === 'Відправлено' ? 'sky' : 'emerald'
+                                    },
+                                    {
+                                      id: 'delivered',
+                                      label: 'Доставлено',
+                                      sub: 'Отримано покупцем',
+                                      icon: CheckCircle2,
+                                      isPassed: order.status === 'Доставлено',
+                                      isCurrent: order.status === 'Доставлено',
+                                      badgeText: order.status === 'Доставлено' ? 'Отримано ✓' : 'Фінал',
+                                      badgeTheme: 'emerald'
+                                    }
+                                  ];
+
+                                  return stepsConfig.map((s, sIdx) => {
+                                    const StepIcon = s.icon;
+                                    let nodeBg = 'bg-white text-slate-400 border-2 border-slate-200 shadow-2xs';
+
+                                    if (s.isPassed) {
+                                      nodeBg = 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20 ring-4 ring-emerald-50';
+                                    } else if (s.isCurrent) {
+                                      nodeBg = 'bg-sky-600 text-white ring-4 ring-sky-100 shadow-md shadow-sky-600/20 scale-105 animate-pulse';
+                                    } else if (s.id === 'payment' && isCashOnDelivery && !isOrderPaid) {
+                                      nodeBg = 'bg-amber-50 text-amber-700 border-2 border-amber-300 shadow-2xs';
+                                    }
+
+                                    return (
+                                      <div key={s.id} className="flex flex-col items-center text-center relative group">
+                                        
+                                        {/* Step Icon Circle */}
+                                        <div
+                                          className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center transition-all duration-300 relative z-10 mb-2 ${nodeBg}`}
+                                        >
+                                          {s.isPassed ? (
+                                            <Check className="w-5 h-5 stroke-[2.5]" />
+                                          ) : (
+                                            <StepIcon className={`w-5 h-5 ${s.isCurrent ? 'stroke-[2.2]' : 'stroke-[1.8]'}`} />
+                                          )}
+                                        </div>
+
+                                        {/* Step Title */}
+                                        <div className="flex flex-col items-center w-full px-0.5">
+                                          <span
+                                            className={`text-[11px] sm:text-xs leading-tight transition-colors line-clamp-2 ${
+                                              s.isCurrent
+                                                ? 'font-black text-slate-950'
+                                                : s.isPassed
+                                                ? 'font-bold text-slate-800'
+                                                : s.id === 'payment' && isCashOnDelivery && !isOrderPaid
+                                                ? 'font-bold text-amber-800'
+                                                : 'font-medium text-slate-400'
+                                            }`}
+                                          >
+                                            {s.label}
+                                          </span>
+
+                                          {/* Status Micro Badge */}
+                                          {s.isCurrent ? (
+                                            <span className="mt-1 px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 text-[9px] font-bold tracking-tight leading-none whitespace-nowrap">
+                                              Поточний
+                                            </span>
+                                          ) : s.isPassed ? (
+                                            <span className="mt-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 text-[9px] font-bold tracking-tight leading-none whitespace-nowrap">
+                                              {s.badgeText}
+                                            </span>
+                                          ) : s.id === 'payment' && isCashOnDelivery ? (
+                                            <span className="mt-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-bold tracking-tight leading-none whitespace-nowrap">
+                                              {s.badgeText}
+                                            </span>
+                                          ) : (
+                                            <span className="mt-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-medium tracking-tight leading-none whitespace-nowrap">
+                                              {s.badgeText}
+                                            </span>
+                                          )}
+
+                                          {/* Subtitle on Desktop */}
+                                          <span className="hidden md:block text-[10px] text-slate-400 mt-1 max-w-[110px] leading-tight truncate">
+                                            {s.sub}
+                                          </span>
+                                        </div>
+
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* Contextual payment banner under tracker */}
+                            {(() => {
+                              const isCashOnDelivery = order.paymentMethod === 'cash_on_delivery';
+                              const isBankInvoice = order.paymentMethod === 'bank_invoice';
+                              const isOrderPaid = order.isPaid === true || (order.paymentMethod === 'card_online' && (order as any).paymentStatus !== 'failed');
+
+                              if (isOrderPaid) {
+                                return (
+                                  <div className="mt-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="p-2 rounded-lg bg-emerald-600 text-white shadow-xs">
+                                        <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                                      </div>
+                                      <div>
+                                        <div className="font-bold flex items-center gap-1.5">
+                                          <span>ОПЛАЧЕНО 100%</span>
+                                          <span className="text-[11px] font-medium text-emerald-700">
+                                            · {order.paymentProvider || (order.paymentMethod === 'card_online' ? 'Автоматичний онлайн-еквайринг' : isCashOnDelivery ? 'Післяплата Нова Пошта' : 'Рахунок IBAN')}
+                                          </span>
+                                        </div>
+                                        <div className="text-[11px] text-emerald-800">
+                                          Сума <b>{order.total.toFixed(2)} грн</b> зарахована {order.paidAt ? `· ${order.paidAt}` : ''}
+                                          {order.paymentTransactionId && <span className="font-mono text-emerald-900 ml-1">[{order.paymentTransactionId}]</span>}
+                                        </div>
+                                      </div>
                                     </div>
-
-                                    {/* Stage Title */}
-                                    <span
-                                      className={`text-[11px] sm:text-xs leading-tight transition-colors ${
-                                        isCurrent
-                                          ? 'font-black text-orange-600'
-                                          : isPassed
-                                          ? 'font-bold text-slate-800'
-                                          : 'font-medium text-slate-400'
-                                      }`}
-                                    >
-                                      {step.label}
-                                    </span>
-
-                                    {/* Stage Description (hidden on tiny screens) */}
-                                    <span className="hidden sm:block text-[10px] text-slate-400 mt-0.5 max-w-[100px] leading-tight">
-                                      {step.desc}
-                                    </span>
-
+                                    <div className="flex items-center gap-2">
+                                      <span className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider shadow-2xs">
+                                        ✓ Сплачено
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePrintOrder(order)}
+                                        className="px-2.5 py-1 bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-900 rounded-lg font-semibold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                                        title="Роздрукувати фіскальний чек"
+                                      >
+                                        <Printer className="w-3 h-3 text-emerald-700" />
+                                        <span>Чек</span>
+                                      </button>
+                                    </div>
                                   </div>
                                 );
-                              })}
+                              }
 
-                            </div>
+                              if (isCashOnDelivery) {
+                                return (
+                                  <div className="mt-4 p-3.5 rounded-xl bg-amber-50/90 border border-amber-300 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="p-2 rounded-lg bg-amber-500 text-white shadow-xs">
+                                        <Banknote className="w-4 h-4 stroke-[2.5]" />
+                                      </div>
+                                      <div>
+                                        <div className="font-bold">
+                                          Накладений платіж (післяплата на Новій Пошті):
+                                        </div>
+                                        <div className="text-[11px] text-amber-800">
+                                          Оплата здійснюється при огляді товару у відділенні або кур'єру на суму <b>{order.total.toFixed(2)} грн</b>.
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 ml-auto sm:ml-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => setPayingOrder(order)}
+                                        className="px-3 py-1.5 bg-white hover:bg-amber-100/60 border border-amber-300 text-amber-950 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                                        title="Сплатити карткою онлайн, щоб заощадити комісію Нової Пошти (20 грн + 2%)"
+                                      >
+                                        <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>Оплатити онлайн (без комісії)</span>
+                                      </button>
+                                      <span className="px-2.5 py-1 bg-amber-200/80 rounded-lg font-bold text-[10px] text-amber-950 uppercase tracking-wider">
+                                        При отриманні
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              if (isBankInvoice) {
+                                return (
+                                  <div className="mt-4 p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 flex flex-wrap items-center justify-between gap-3 text-xs text-indigo-950">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="p-2 rounded-lg bg-indigo-600 text-white shadow-xs">
+                                        <FileText className="w-4 h-4 stroke-[2.5]" />
+                                      </div>
+                                      <div>
+                                        <div className="font-bold flex items-center gap-1.5">
+                                          <span>Очікує оплати за реквізитами (IBAN)</span>
+                                        </div>
+                                        <div className="text-[11px] text-indigo-800">
+                                          Сума до сплати: <b>{order.total.toFixed(2)} грн</b> за рахунком-фактурою
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIbanModalOrder(order)}
+                                      className="px-3.5 py-1.5 bg-indigo-900 hover:bg-indigo-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    >
+                                      <Copy className="w-3.5 h-3.5 text-indigo-300" />
+                                      <span>Реквізити для оплати IBAN</span>
+                                    </button>
+                                  </div>
+                                );
+                              }
+
+                              // Online card pending
+                              return (
+                                <div className="mt-4 p-3.5 rounded-xl bg-sky-50 border border-sky-300 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-950">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="p-2 rounded-lg bg-sky-600 text-white shadow-xs">
+                                      <CreditCard className="w-4 h-4 stroke-[2.5]" />
+                                    </div>
+                                    <div>
+                                      <div className="font-bold flex items-center gap-1.5">
+                                        <span>Очікує онлайн-оплати</span>
+                                        <span className="text-[11px] font-semibold text-sky-700">
+                                          (Apple Pay, Google Pay або картка)
+                                        </span>
+                                      </div>
+                                      <div className="text-[11px] text-sky-800">
+                                        До сплати: <b>{order.total.toFixed(2)} грн</b> · Миттєве автоматичне підтвердження без комісії
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPayingOrder(order)}
+                                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-transform active:scale-95 cursor-pointer ml-auto sm:ml-0"
+                                  >
+                                    <Lock className="w-3.5 h-3.5" />
+                                    <span>Оплатити зараз ({order.total.toFixed(2)} грн)</span>
+                                  </button>
+                                </div>
+                              );
+                            })()}
 
                           </div>
                         </div>
@@ -956,7 +1213,53 @@ export const AccountView: React.FC = () => {
                             Питання щодо замовлення? <a href={`tel:${siteSettings.phone.replace(/\D/g, '')}`} className="text-orange-600 font-bold hover:underline">{siteSettings.phone}</a>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {/* Online Payment quick action for unpaid orders */}
+                            {!isOrderPaid && (
+                              <button
+                                type="button"
+                                onClick={() => setPayingOrder(order)}
+                                className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white text-xs font-black rounded-lg transition-transform active:scale-95 inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
+                                title="Оплатити онлайн без комісії"
+                              >
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>Оплатити онлайн ({order.total.toFixed(2)} грн)</span>
+                              </button>
+                            )}
+
+                            {order.paymentMethod === 'bank_invoice' && !isOrderPaid && (
+                              <button
+                                type="button"
+                                onClick={() => setIbanModalOrder(order)}
+                                className="px-3 py-1.5 bg-indigo-900 hover:bg-indigo-800 text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-indigo-300" />
+                                <span>Реквізити IBAN</span>
+                              </button>
+                            )}
+
+                            {isOrderPaid && (
+                              <div className="px-2.5 py-1 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-lg inline-flex items-center gap-1 shadow-2xs">
+                                <Check className="w-3.5 h-3.5 stroke-[3] text-emerald-600" />
+                                <span>Оплачено 100%</span>
+                              </div>
+                            )}
+
+                            {order.status !== 'Доставлено' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateOrderStatus(order.id, 'Доставлено');
+                                  showToast('Дякуємо! Статус замовлення оновлено на «Доставлено»', 'success');
+                                }}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-2xs active:scale-95 cursor-pointer"
+                                title="Підтвердити отримання посилки"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Посилку отримано</span>
+                              </button>
+                            )}
+
                             <button
                               type="button"
                               onClick={() => handlePrintOrder(order)}
@@ -987,6 +1290,170 @@ export const AccountView: React.FC = () => {
 
             </div>
 
+          </div>
+        )}
+
+        {/* 6. Online Payment Modal */}
+        {payingOrder && (
+          <OnlinePaymentModal
+            isOpen={!!payingOrder}
+            onClose={() => setPayingOrder(null)}
+            orderId={payingOrder.id}
+            amount={payingOrder.total}
+            customerName={payingOrder.fio}
+            customerPhone={payingOrder.phone}
+            gateway={(siteSettings.paymentGateway as any) || 'monobank'}
+            monobankToken={siteSettings.monobankToken}
+            onPaymentSuccess={(details) => {
+              editOrder(payingOrder.id, {
+                isPaid: true,
+                status: payingOrder.status === 'Створено' ? 'Оплачено' : payingOrder.status,
+                paidAt: details.paidAt,
+                paymentTransactionId: details.transactionId,
+                paymentProvider: details.provider,
+                paymentMethod: 'card_online'
+              });
+              showToast(`Замовлення №${payingOrder.id} успішно сплачено онлайн!`, 'success');
+              setPayingOrder(null);
+            }}
+          />
+        )}
+
+        {/* 7. Official IBAN Banking Requisites Modal */}
+        {ibanModalOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 my-auto">
+              <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-400/30 flex items-center justify-center shrink-0">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-white">
+                      Реквізити для оплати (IBAN)
+                    </h3>
+                    <p className="text-[11px] text-slate-300">
+                      Замовлення №{ibanModalOrder.id} на суму <b>{ibanModalOrder.total.toFixed(2)} грн</b>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIbanModalOrder(null)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4 text-xs">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px]">
+                  Оплатіть у будь-якому банківському застосунку (Приват24, monobank, Ощад 24/7) у розділі <b>«Платіж за реквізитами (IBAN)»</b>.
+                </div>
+
+                {/* Account details list */}
+                <div className="space-y-3 font-mono">
+                  {/* IBAN */}
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="flex items-center justify-between text-[11px] font-sans text-slate-500 mb-1">
+                      <span className="font-bold text-slate-700">Номер рахунку IBAN:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText('UA213052990000026007894561230');
+                          setCopiedField('iban');
+                          setTimeout(() => setCopiedField(null), 2000);
+                          showToast('IBAN скопійовано в буфер обміну', 'info');
+                        }}
+                        className="text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedField === 'iban' ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-700">Скопійовано!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Скопіювати</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <div className="text-xs sm:text-sm font-black text-slate-900 tracking-wider break-all select-all">
+                      UA213052990000026007894561230
+                    </div>
+                  </div>
+
+                  {/* Beneficiary */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
+                      <span className="text-[10px] text-slate-500 block">Одержувач:</span>
+                      <span className="font-bold text-slate-900">ТОВ «ІСКРА ЕЛЕКТРОТЕХНІКА»</span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
+                      <span className="text-[10px] text-slate-500 block">Код ЄДРПОУ:</span>
+                      <span className="font-bold text-slate-900">43928174</span>
+                    </div>
+                  </div>
+
+                  {/* Bank */}
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 font-sans">
+                    <span className="text-[10px] text-slate-500 block">Банк одержувача:</span>
+                    <span className="font-bold text-slate-900">АТ КБ «ПриватБанк» (МФО 305299)</span>
+                  </div>
+
+                  {/* Purpose */}
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="flex items-center justify-between text-[11px] font-sans text-slate-500 mb-1">
+                      <span className="font-bold text-slate-700">Призначення платежу:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const purposeText = `Оплата за електротовари замовлення №${ibanModalOrder.id} (${ibanModalOrder.fio}) без ПДВ`;
+                          navigator.clipboard.writeText(purposeText);
+                          setCopiedField('purpose');
+                          setTimeout(() => setCopiedField(null), 2000);
+                          showToast('Призначення скопійовано', 'info');
+                        }}
+                        className="text-orange-600 font-bold hover:underline flex items-center gap-1 cursor-pointer font-sans"
+                      >
+                        {copiedField === 'purpose' ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-700">Скопійовано!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Скопіювати</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <div className="text-xs text-slate-800 font-sans select-all">
+                      Оплата за електротовари замовлення №{ibanModalOrder.id} ({ibanModalOrder.fio}) без ПДВ
+                    </div>
+                  </div>
+
+                </div>
+
+                <div className="pt-2 flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      showToast('Дякуємо! Бухгалтерія перевірить надходження коштів', 'info');
+                      setIbanModalOrder(null);
+                    }}
+                    className="flex-1 py-2.5 bg-indigo-900 hover:bg-indigo-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer text-center"
+                  >
+                    Зрозуміло, оплачу
+                  </button>
+                </div>
+
+              </div>
+            </div>
           </div>
         )}
 

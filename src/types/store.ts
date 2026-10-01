@@ -51,6 +51,10 @@ export interface Order {
   status: OrderStatus;
   ttn?: string;
   paymentMethod?: 'cash_on_delivery' | 'card_online' | 'bank_invoice';
+  isPaid?: boolean;
+  paidAt?: string;
+  paymentTransactionId?: string;
+  paymentProvider?: string;
   notes?: string;
 }
 

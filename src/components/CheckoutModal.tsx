@@ -31,6 +31,7 @@ import {
   DeliveryWarehouse,
   POPULAR_CITIES 
 } from '../services/deliveryService';
+import { OnlinePaymentModal } from './OnlinePaymentModal';
 
 export const CheckoutModal: React.FC = () => {
   const { 
@@ -87,6 +88,9 @@ export const CheckoutModal: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash_on_delivery' | 'card_online' | 'bank_invoice'>('card_online');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [showPaymentSuccessSimulator, setShowPaymentSuccessSimulator] = useState(false);
+  const [isOnlinePaymentModalOpen, setIsOnlinePaymentModalOpen] = useState(false);
+  const [pendingOrderPayload, setPendingOrderPayload] = useState<any>(null);
+  const [tempOrderId, setTempOrderId] = useState<string>('');
 
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -210,16 +214,27 @@ export const CheckoutModal: React.FC = () => {
       deliveryString = `Кур'єрська доставка до дверей: ${streetAddress || 'Вказана адреса'}`;
     }
 
-    try {
-      const fullPhone = getFullInternationalPhone(phone);
-      
-      // If card_online selected, simulate or initialize secure payment
-      if (paymentMethod === 'card_online') {
-        setIsProcessingPayment(true);
-        // Quick visual check or modal payment simulation for instant confirmation
-        await new Promise(r => setTimeout(r, 600));
-      }
+    const fullPhone = getFullInternationalPhone(phone);
 
+    // If online card payment is selected, launch the secure payment modal
+    if (paymentMethod === 'card_online') {
+      const generatedTempId = Math.floor(100000 + Math.random() * 900000).toString();
+      setTempOrderId(generatedTempId);
+      setPendingOrderPayload({
+        fio,
+        phone: fullPhone,
+        delivery: deliveryString,
+        city: orderCity,
+        paymentMethod: 'card_online',
+        notes
+      });
+      setIsOnlinePaymentModalOpen(true);
+      return;
+    }
+
+    // Cash on delivery or Bank invoice: direct placeOrder
+    setIsSubmitting(true);
+    try {
       const order = await placeOrder({
         fio,
         phone: fullPhone,
@@ -235,13 +250,43 @@ export const CheckoutModal: React.FC = () => {
       showToast("Помилка при створенні замовлення", "error");
     } finally {
       setIsSubmitting(false);
-      setIsProcessingPayment(false);
+    }
+  };
+
+  const handlePaymentSuccess = async (paymentResult: {
+    transactionId: string;
+    provider: string;
+    paidAt: string;
+    cardMask?: string;
+  }) => {
+    if (!pendingOrderPayload) return;
+    setIsSubmitting(true);
+    try {
+      const extraNotes = `${pendingOrderPayload.notes ? pendingOrderPayload.notes + ' · ' : ''}Оплата: ${paymentResult.provider} (Транзакція: ${paymentResult.transactionId}, ${paymentResult.paidAt})`;
+      const order = await placeOrder({
+        ...pendingOrderPayload,
+        paymentMethod: 'card_online',
+        notes: extraNotes
+      });
+      setPlacedOrder({
+        ...order,
+        isPaid: true
+      });
+      showToast('Оплату успішно здійснено!', 'success');
+    } catch (err) {
+      console.error('Order creation error after payment:', err);
+      showToast('Помилка збереження замовлення', 'error');
+    } finally {
+      setIsSubmitting(false);
+      setIsOnlinePaymentModalOpen(false);
     }
   };
 
   const handleClose = () => {
     setIsCheckoutModalOpen(false);
     setPlacedOrder(null);
+    setIsOnlinePaymentModalOpen(false);
+    setPendingOrderPayload(null);
   };
 
   const filteredWarehouses = warehouses.filter(w => 
