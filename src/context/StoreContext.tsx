@@ -280,9 +280,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [showWishlistOnly, setShowWishlistOnly] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const hash = window.location.hash.replace('#', '');
-      if (hash === 'wishlist' || hash === 'favorites') return true;
-      const saved = localStorage.getItem('iskra_show_wishlist');
+      const isNewSession = !sessionStorage.getItem('iskra_session_active');
+      localStorage.removeItem('iskra_show_wishlist');
+      if (isNewSession) return false;
+      const saved = sessionStorage.getItem('iskra_show_wishlist');
       if (saved === 'true') return true;
     }
     return false;
@@ -290,10 +291,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('iskra_show_wishlist', String(showWishlistOnly));
-      if (showWishlistOnly) {
-        window.location.hash = 'wishlist';
-      }
+      sessionStorage.setItem('iskra_show_wishlist', String(showWishlistOnly));
+      localStorage.removeItem('iskra_show_wishlist');
     }
   }, [showWishlistOnly]);
 
@@ -456,17 +455,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return verified.email || sessionStorage.getItem('adminUserEmail') || null;
   });
 
-  // Navigation & filters with localStorage + URL Hash persistence
+  // Navigation & session lifecycle:
+  // When the user closes the site completely and enters anew, always load the main home page ('store').
   const [activeView, setActiveView] = useState<'store' | 'account' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
-      const hash = window.location.hash.replace('#', '');
-      if (hash === 'admin' || hash === 'account' || hash === 'store') {
-        return hash;
-      }
-      if (hash === 'wishlist' || hash === 'favorites') {
+      const isNewSession = !sessionStorage.getItem('iskra_session_active');
+      localStorage.removeItem('iskra_active_view');
+      localStorage.removeItem('iskra_show_wishlist');
+
+      if (isNewSession) {
+        sessionStorage.setItem('iskra_session_active', '1');
+        sessionStorage.setItem('iskra_active_view', 'store');
+        // Clean URL hash so previous session tabs/bookmarks don't force a subpage
+        if (window.location.hash) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
         return 'store';
       }
-      const saved = localStorage.getItem('iskra_active_view');
+
+      // If page was merely refreshed (F5) within the same open tab session
+      const saved = sessionStorage.getItem('iskra_active_view');
       if (saved === 'admin' || saved === 'account' || saved === 'store') {
         return saved;
       }
@@ -476,17 +484,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('iskra_active_view', activeView);
-      if (activeView === 'store') {
-        if (!showWishlistOnly) {
-          if (window.location.hash && window.location.hash !== '#wishlist' && window.location.hash !== '#favorites') {
-            window.history.replaceState(null, '', window.location.pathname);
-          }
-        } else {
-          window.location.hash = 'wishlist';
-        }
-      } else {
-        window.location.hash = activeView;
+      sessionStorage.setItem('iskra_active_view', activeView);
+      localStorage.removeItem('iskra_active_view');
+
+      // Keep address bar clean on the main store page
+      if (activeView === 'store' && window.location.hash) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
       }
     }
   }, [activeView, showWishlistOnly]);
@@ -504,7 +507,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [showWishlistOnly]);
+  }, []);
 
   const [activeCategory, setActiveCategory] = useState<string>('Усі');
   const [searchQuery, setSearchQuery] = useState<string>('');
