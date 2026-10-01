@@ -16,7 +16,7 @@ export const ASSET_IMAGES = {
  */
 export function getSafeImageUrl(imgUrl?: string, categoryOrName?: string): string {
   if (!imgUrl || typeof imgUrl !== 'string' || imgUrl.trim() === '') {
-    return '';
+    return ASSET_IMAGES.circuitBreaker;
   }
 
   const trimmed = imgUrl.trim();
