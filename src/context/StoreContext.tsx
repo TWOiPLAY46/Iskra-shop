@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react';
 import { initialCategoriesTree, initialHeaderDesign, initialProducts, initialSiteSettings, initialWeeklyDeal } from '../data/initialData';
 import { getSafeImageUrl } from '../utils/assetImages';
+import { sendTelegramAlert } from '../utils/telegramHelper';
 import { initialReviews } from '../data/productReviews';
 import { 
   CartItem, 
@@ -1004,15 +1005,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           `📦 *Товари:*\n${itemsList}` +
           (orderData.notes ? `\n\n📝 *Коментар:* ${orderData.notes}` : '');
 
-        fetch(`https://api.telegram.org/bot${siteSettings.botToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: siteSettings.chatId,
-            text: tgMsg,
-            parse_mode: 'Markdown'
-          })
-        }).catch((err) => console.warn('Telegram notify error:', err));
+        sendTelegramAlert(siteSettings.botToken, siteSettings.chatId, tgMsg).catch((err) =>
+          console.warn('Telegram notify error:', err)
+        );
       } catch (err) {
         console.warn('Could not dispatch Telegram alert:', err);
       }

@@ -70,6 +70,7 @@ import {
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
 import { trackNovaPoshtaTTN, searchUkrposhtaOffices, UkrposhtaOffice } from '../services/deliveryService';
+import { sendTelegramAlert } from '../utils/telegramHelper';
 import { 
   checkAdminSecurityStatus, 
   recordFailedLogin, 
@@ -4764,22 +4765,21 @@ export const AdminPanel: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   if (!settingsForm.botToken || !settingsForm.chatId) {
                     showToast('Введіть Bot Token та Chat ID для тесту', 'error');
                     return;
                   }
-                  fetch(`https://api.telegram.org/bot${settingsForm.botToken}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      chat_id: settingsForm.chatId,
-                      text: "✅ Тестове сповіщення від магазину ISKRA. З'єднання працює ідеально!",
-                      parse_mode: 'Markdown'
-                    })
-                  })
-                    .then(() => showToast('Тестове повідомлення надіслано в Telegram!', 'success'))
-                    .catch(() => showToast('Помилка надсилання в Telegram', 'error'));
+                  const success = await sendTelegramAlert(
+                    settingsForm.botToken,
+                    settingsForm.chatId,
+                    "✅ Тестове сповіщення від магазину ISKRA. З'єднання працює ідеально!"
+                  );
+                  if (success) {
+                    showToast('Тестове повідомлення надіслано в Telegram!', 'success');
+                  } else {
+                    showToast('Помилка надсилання в Telegram (перевірте токен, chat ID та чи натиснутий /start у боті)', 'error');
+                  }
                 }}
                 className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg"
               >
