@@ -67,6 +67,7 @@ import {
   FileText,
   Building2,
   Boxes,
+  Clipboard,
   X
 } from 'lucide-react';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
@@ -762,6 +763,64 @@ export const AdminPanel: React.FC = () => {
     } finally {
       setIsUploadingProductImage(false);
       e.target.value = '';
+    }
+  };
+
+  // Handler for pasting image from clipboard (Ctrl+V)
+  const handlePasteFromClipboard = async () => {
+    try {
+      if (!navigator.clipboard) {
+        showToast('Скопіюйте фото та натисніть Ctrl+V', 'info');
+        return;
+      }
+      if (navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              const file = new File([blob], 'pasted-image.png', { type });
+              const result = await optimizeImageFile(file, 1000, 1000, 0.85);
+              setPImage(result.dataUrl);
+              showToast(`Фото успішно вставлено з буфера (${result.sizeKb} КБ)!`, 'success');
+              return;
+            }
+          }
+        }
+      }
+      const text = await navigator.clipboard.readText();
+      if (text && (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('data:image/'))) {
+        setPImage(text.trim());
+        showToast('Посилання на фото успішно вставлено!', 'success');
+        return;
+      }
+      showToast('Скопіюйте фото в Google чи іншому сайті та натисніть Ctrl+V', 'info');
+    } catch {
+      showToast('Натисніть клавіші Ctrl + V у вікні товару для вставки фото', 'info');
+    }
+  };
+
+  const handleModalPaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          try {
+            const result = await optimizeImageFile(file, 1000, 1000, 0.85);
+            setPImage(result.dataUrl);
+            showToast(`Фото товару вставлено з буфера (${result.sizeKb} КБ)!`, 'success');
+            return;
+          } catch {}
+        }
+      }
+    }
+    const text = e.clipboardData?.getData('text');
+    if (text && (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('data:image/'))) {
+      setPImage(text.trim());
+      showToast('Посилання на фото вставлено!', 'success');
     }
   };
 
@@ -5497,7 +5556,7 @@ export const AdminPanel: React.FC = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setIsProductModalOpen(false)} />
           <div className="flex min-h-full items-center justify-center p-4">
-            <div className="relative bg-white rounded-2xl max-w-3xl sm:max-w-4xl lg:max-w-5xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
+            <div onPaste={handleModalPaste} className="relative bg-white rounded-2xl max-w-3xl sm:max-w-4xl lg:max-w-5xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
               <h3 className="text-base font-bold font-display text-slate-900 mb-4 pb-3 border-b border-slate-100 flex items-center justify-between">
                 <span>{editingProduct ? 'Редагувати товар' : 'Додати новий товар'}</span>
                 <button
@@ -5907,8 +5966,8 @@ export const AdminPanel: React.FC = () => {
                   {/* Mode 2: Search online from internet */}
                   {productImageTab === 'search' && (
                     <div className="space-y-3">
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
+                      <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                        <div className="relative flex-1 min-w-[200px]">
                           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input
                             type="text"
@@ -5928,11 +5987,45 @@ export const AdminPanel: React.FC = () => {
                           type="button"
                           disabled={isSearchingOnlineImages}
                           onClick={() => handleSearchOnlineImages()}
-                          className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                          className="px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                          title="Знайти фото в інтернеті"
                         >
                           <Search className={`w-3.5 h-3.5 ${isSearchingOnlineImages ? 'animate-spin' : ''}`} />
                           <span>{isSearchingOnlineImages ? 'Пошук...' : 'Знайти фото'}</span>
                         </button>
+                        <a
+                          href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(onlineImageQuery || pName)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0"
+                          title="Відкрити Google Зображення для цього товару"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-sky-600" />
+                          <span>Google Фото</span>
+                        </a>
+                        <a
+                          href={`https://prom.ua/search?search_term=${encodeURIComponent(onlineImageQuery || pName)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-800 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0"
+                          title="Знайти товар на Prom.ua"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-violet-600" />
+                          <span>Prom.ua</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={handlePasteFromClipboard}
+                          className="px-3 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                          title="Вставити скопійоване зображення або посилання (Ctrl+V)"
+                        >
+                          <Clipboard className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Вставити (Ctrl+V)</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] bg-slate-100/70 border border-slate-200 px-3 py-1.5 rounded-lg text-slate-600">
+                        <span>💡 <b>Підказка:</b> відкрийте Google або Prom, натисніть правою кнопкою «Копіювати зображення» і натисніть «Вставити (Ctrl+V)»</span>
                       </div>
 
                       {onlineImageError && (
