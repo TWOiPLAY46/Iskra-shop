@@ -44,6 +44,7 @@ import {
 } from '../services/adminSecurityService';
 import { formatUnit, normalizeStorageUnit } from '../utils/unitFormatter';
 import { parseProductCSV, CsvImportOptions } from '../utils/csvProductParser';
+import { classifyProduct } from '../utils/categoryClassifier';
 
 interface StoreContextType {
   products: Product[];
@@ -113,6 +114,7 @@ interface StoreContextType {
   bulkAdjustZeroStock: (newStockForZeroItems: number) => void;
   batchUpdateSelectedProducts: (ids: string[], updates: { price?: number; stock?: number }) => void;
   batchDeleteProducts: (ids: string[]) => void;
+  autoClassifyProducts: (productIds?: string[]) => void;
   resetDefaultCatalog: () => void;
   exportProductsCSV: () => string;
   importProductsCSV: (csvText: string, options?: CsvImportOptions) => number;
@@ -1516,6 +1518,71 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const autoClassifyProducts = (productIds?: string[]) => {
+    const idSet = productIds && productIds.length > 0 ? new Set(productIds) : null;
+    let updatedCount = 0;
+    let updatedTree = { ...categoriesTree };
+    let treeChanged = false;
+
+    const next = products.map((p) => {
+      if (!idSet || idSet.has(p.id)) {
+        const classified = classifyProduct(p.name, p.sku);
+        if (
+          p.mainCategory !== classified.mainCategory ||
+          p.subCategory !== classified.subCategory ||
+          p.category !== classified.category
+        ) {
+          updatedCount++;
+          const { mainCategory, subCategory, category } = classified;
+          if (!updatedTree[mainCategory]) {
+            updatedTree[mainCategory] = { _leaves: [] };
+            treeChanged = true;
+          }
+          if (!updatedTree[mainCategory][subCategory] || !Array.isArray(updatedTree[mainCategory][subCategory])) {
+            updatedTree[mainCategory] = { ...updatedTree[mainCategory], [subCategory]: [] };
+            treeChanged = true;
+          }
+          if (!updatedTree[mainCategory][subCategory].includes(category)) {
+            updatedTree[mainCategory] = {
+              ...updatedTree[mainCategory],
+              [subCategory]: [...updatedTree[mainCategory][subCategory], category]
+            };
+            treeChanged = true;
+          }
+
+          return {
+            ...p,
+            mainCategory: classified.mainCategory,
+            subCategory: classified.subCategory,
+            category: classified.category
+          };
+        }
+      }
+      return p;
+    });
+
+    if (updatedCount > 0) {
+      setProducts(next);
+      localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
+
+      if (treeChanged) {
+        setCategoriesTree(updatedTree);
+        localStorage.setItem('iskra_categories_tree_react', JSON.stringify(updatedTree));
+      }
+
+      if (firebaseConfig.enabled) {
+        pushStoreToFirebase(firebaseConfig, {
+          products: next,
+          categoriesTree: treeChanged ? updatedTree : categoriesTree,
+          lastSyncTimestamp: Date.now()
+        });
+      }
+      showToast(`Автоматично розподілено ${updatedCount} товарів за категоріями!`, 'success');
+    } else {
+      showToast('Всі вибрані товари вже відповідають своїм категоріям', 'info');
+    }
+  };
+
   const resetDefaultCatalog = () => {
     localStorage.removeItem('iskra_deleted_product_ids_v1');
     setProducts(initialProducts);
@@ -1929,6 +1996,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         bulkAdjustZeroStock,
         batchUpdateSelectedProducts,
         batchDeleteProducts,
+        autoClassifyProducts,
         resetDefaultCatalog,
         exportProductsCSV,
         importProductsCSV,

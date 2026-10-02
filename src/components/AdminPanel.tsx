@@ -571,6 +571,7 @@ export const AdminPanel: React.FC = () => {
     bulkAdjustZeroStock,
     batchUpdateSelectedProducts,
     batchDeleteProducts,
+    autoClassifyProducts,
     exportProductsCSV,
     importProductsCSV,
     resetDefaultCatalog,
@@ -2722,87 +2723,14 @@ export const AdminPanel: React.FC = () => {
               </button>
 
               <button
-                onClick={handleCsvExport}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
-                title="Експорт каталогу у CSV"
-              >
-                <FileDown className="w-4 h-4" />
-                <span>Експорт CSV</span>
-              </button>
-
-              <button
                 type="button"
-                onClick={() => setIsCsvImportModalOpen(true)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
-                title="Розумний імпорт прайс-листа CSV з налаштуванням залишків"
+                onClick={() => autoClassifyProducts()}
+                className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-indigo-200 shadow-2xs"
+                title="Автоматично розподілити товари за категоріями та підкатегоріями на основі їхніх назв"
               >
-                <FileUp className="w-4 h-4 text-orange-600" />
-                <span>Імпорт CSV</span>
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <span>Авто-категорії</span>
               </button>
-
-              {confirmClearPhotos ? (
-                <div className="flex items-center gap-2 animate-in fade-in bg-rose-50 p-2 rounded-xl border border-rose-300 shadow-sm">
-                  <span className="text-xs font-bold text-rose-800">⚠️ Точно видалити всі фото у всіх товарів?</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearAllProductPhotos();
-                      setConfirmClearPhotos(false);
-                    }}
-                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
-                  >
-                    Так, видалити
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmClearPhotos(false)}
-                    className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-medium cursor-pointer transition-colors"
-                  >
-                    Ні
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConfirmClearPhotos(true)}
-                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
-                  title="Очистити всі фотографії товарів у каталозі та базі даних"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-600" />
-                  <span>Видалити всі фото</span>
-                </button>
-              )}
-
-              {confirmResetCatalog ? (
-                <div className="flex items-center gap-1.5 animate-in fade-in bg-rose-50 p-1 rounded-xl border border-rose-200">
-                  <span className="text-[11px] font-bold text-rose-700">Скинути всі товари?</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetDefaultCatalog();
-                      setConfirmResetCatalog(false);
-                    }}
-                    className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
-                  >
-                    Так
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmResetCatalog(false)}
-                    className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-medium cursor-pointer"
-                  >
-                    Ні
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConfirmResetCatalog(true)}
-                  className="px-3 py-2 text-rose-600 hover:bg-rose-50 text-xs font-bold rounded-xl cursor-pointer"
-                >
-                  Скинути
-                </button>
-              )}
             </div>
           </div>
 
@@ -2916,6 +2844,17 @@ export const AdminPanel: React.FC = () => {
                     Призначити ціну
                   </button>
                 </div>
+
+                {/* Auto-classify selected */}
+                <button
+                  type="button"
+                  onClick={() => autoClassifyProducts(selectedProductIds)}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  title="Автоматично розподілити обрані товари за категоріями на основі їхніх назв"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Авто-категорії</span>
+                </button>
 
                 {/* Delete Selected with Confirmation */}
                 {showBatchDeleteConfirm ? (

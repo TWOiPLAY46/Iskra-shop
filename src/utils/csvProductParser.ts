@@ -7,6 +7,7 @@
 
 import { Product } from '../types/store';
 import { normalizeStorageUnit } from './unitFormatter';
+import { classifyProduct } from './categoryClassifier';
 
 export interface CsvImportOptions {
   defaultStock?: number;
@@ -253,31 +254,27 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
       id = safeSku ? `prod-${safeSku}` : `prod-csv-${Date.now()}-${i}`;
     }
 
-    // Category
+    // Category & Subcategory classification
     let category = (catIdx >= 0 && cols[catIdx]) ? cols[catIdx].trim() : '';
-    if (!category) {
-      const nameLower = name.toLowerCase();
-      if (nameLower.includes('світил') || nameLower.includes('лампа') || nameLower.includes('led') || nameLower.includes('панел') || nameLower.includes('люстр') || nameLower.includes('прожект') || nameLower.includes('etron') || nameLower.includes('norte')) {
-        category = 'Світлодіодне освітлення';
-      } else if (nameLower.includes('кабель') || nameLower.includes('провід') || nameLower.includes('автомат') || nameLower.includes('розет') || nameLower.includes('вимикач') || nameLower.includes('реле')) {
-        category = 'Кабель, провід, монтаж';
-      } else if (nameLower.includes('кран') || nameLower.includes('змішувач') || nameLower.includes('труб') || nameLower.includes('фітинг') || nameLower.includes('сифон')) {
-        category = 'Сантехніка та опалення';
-      } else {
-        category = defaultCategory;
-      }
-    }
-
     let mainCategory = defaultMainCategory;
-    const catLower = category.toLowerCase();
-    if (catLower.includes('світл') || catLower.includes('освітл') || catLower.includes('електр') || catLower.includes('кабель') || catLower.includes('автомат')) {
-      mainCategory = 'Електротовари';
-    } else if (catLower.includes('сантех') || catLower.includes('опален') || catLower.includes('кран') || catLower.includes('змішувач') || catLower.includes('труб')) {
-      mainCategory = 'Сантехніка та опалення';
-    } else if (catLower.includes('інструм') || catLower.includes('облад')) {
-      mainCategory = 'Інструменти та обладнання';
-    } else if (catLower.includes('господ') || catLower.includes('сад')) {
-      mainCategory = 'Господарчі товари';
+    let subCategory = category;
+
+    if (!category) {
+      const classified = classifyProduct(name, sku);
+      mainCategory = classified.mainCategory;
+      subCategory = classified.subCategory;
+      category = classified.category;
+    } else {
+      const catLower = category.toLowerCase();
+      if (catLower.includes('світл') || catLower.includes('освітл') || catLower.includes('електр') || catLower.includes('кабель') || catLower.includes('автомат')) {
+        mainCategory = 'Електротовари';
+      } else if (catLower.includes('сантех') || catLower.includes('опален') || catLower.includes('кран') || catLower.includes('змішувач') || catLower.includes('труб')) {
+        mainCategory = 'Сантехніка та опалення';
+      } else if (catLower.includes('інструм') || catLower.includes('облад')) {
+        mainCategory = 'Інструменти та обладнання';
+      } else if (catLower.includes('господ') || catLower.includes('сад')) {
+        mainCategory = 'Господарчі товари';
+      }
     }
 
     // Price & Stock robust heuristics for garbled headers (mojibake)

@@ -1,5 +1,6 @@
 import { Product, Order } from '../types/store';
 import { formatUnit, normalizeStorageUnit } from './unitFormatter';
+import { classifyProduct } from './categoryClassifier';
 
 export interface UkrSkladParsedData {
   products: Partial<Product>[];
@@ -171,37 +172,19 @@ export function parseUkrSkladCSV(csvText: string): UkrSkladParsedData {
       const unit = normalizeStorageUnit(rawUnit);
 
       // Smart category mapping
-      let mainCategory = 'Сантехніка та опалення';
-      let category = 'Змішувачі та комплектуючі';
-      const lower = name.toLowerCase();
+      let mainCategory = 'Електротовари';
+      let subCategory = 'Освітлення';
+      let category = 'Світильники';
 
-      if (lower.includes('led') || lower.includes('ламп') || lower.includes('світил') || lower.includes('прожект') || lower.includes('розетк') || lower.includes('вимикач') || lower.includes('кабел') || lower.includes('провід') || lower.includes('автомат') || lower.includes('трон') || lower.includes('etron')) {
-        mainCategory = 'Електротовари';
-        if (lower.includes('ламп') || lower.includes('led') || lower.includes('стріч')) {
-          category = 'Освітлення';
-        } else if (lower.includes('розетк') || lower.includes('вимикач')) {
-          category = 'Електрофурнітура';
-        } else if (lower.includes('автомат') || lower.includes('реле')) {
-          category = 'Електрообладнання';
-        } else {
-          category = 'Кабель, провід, монтаж';
-        }
-      } else if (lower.includes('інструмент') || lower.includes('дриль') || lower.includes('шуруп') || lower.includes('болгарк') || lower.includes('перфоратор') || lower.includes('молот') || lower.includes('ключ') || lower.includes('свердл') || lower.includes('бур')) {
-        mainCategory = 'Інструменти та обладнання';
-        if (lower.includes('інструмент') || lower.includes('дриль') || lower.includes('шуруп') || lower.includes('болгарк')) {
-          category = 'Електроінструмент';
-        } else if (lower.includes('свердл') || lower.includes('бур') || lower.includes('диск')) {
-          category = 'Витратні матеріали та оснастка';
-        } else {
-          category = 'Ручний інструмент';
-        }
-      } else if (lower.includes('замок') || lower.includes('дюбел') || lower.includes('шуруп') || lower.includes('відр') || lower.includes('швабр') || lower.includes('драбин') || lower.includes('рукавич')) {
-        mainCategory = 'Господарчі товари';
-        if (lower.includes('замок') || lower.includes('дюбел') || lower.includes('шуруп')) {
-          category = 'Кріплення та замки';
-        } else {
-          category = 'Господарський інвентар';
-        }
+      const rawCat = catIdx >= 0 && cols[catIdx] ? cols[catIdx].trim() : '';
+      if (rawCat) {
+        category = rawCat;
+        subCategory = rawCat;
+      } else {
+        const classified = classifyProduct(name, sku);
+        mainCategory = classified.mainCategory;
+        subCategory = classified.subCategory;
+        category = classified.category;
       }
 
       result.products.push({
@@ -210,7 +193,7 @@ export function parseUkrSkladCSV(csvText: string): UkrSkladParsedData {
         sku,
         category,
         mainCategory,
-        subCategory: category,
+        subCategory,
         price,
         stock,
         unit: normalizeStorageUnit(unit),
@@ -305,25 +288,22 @@ export function parseUkrSkladXML(xmlString: string): UkrSkladParsedData {
         const image = el.querySelector('Картинка, Image, image, picture, photo')?.textContent?.trim() || '';
 
         if (name) {
-          let mainCategory = 'Сантехніка та опалення';
-          let subCategory = catName;
-          const lower = (name + ' ' + catName).toLowerCase();
-          if (lower.includes('електр') || lower.includes('ламп') || lower.includes('розетк') || lower.includes('кабел') || lower.includes('автомат') || lower.includes('led')) {
-            mainCategory = 'Електротовари';
-            subCategory = 'Освітлення';
-          } else if (lower.includes('інструмент') || lower.includes('дриль') || lower.includes('шуруп') || lower.includes('болгарк')) {
-            mainCategory = 'Інструменти та обладнання';
-            subCategory = 'Ручний інструмент';
-          } else if (lower.includes('замок') || lower.includes('дюбел') || lower.includes('драбин')) {
-            mainCategory = 'Господарчі товари';
-            subCategory = 'Кріплення та замки';
+          let mainCategory = 'Електротовари';
+          let subCategory = catName !== 'Сантехніка та опалення' ? catName : 'Освітлення';
+          let category = subCategory;
+
+          if (!catId || catName === 'Сантехніка та опалення') {
+            const classified = classifyProduct(name, sku);
+            mainCategory = classified.mainCategory;
+            subCategory = classified.subCategory;
+            category = classified.category;
           }
 
           result.products.push({
             id,
             name,
             sku,
-            category: subCategory,
+            category,
             mainCategory,
             subCategory,
             price,
