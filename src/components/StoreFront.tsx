@@ -4,6 +4,7 @@ import { Hero } from './Hero';
 import { ProductCard } from './ProductCard';
 import { WeeklyDealSection } from './WeeklyDealSection';
 import { ProductFilters } from './ProductFilters';
+import { SubcategoryDirectory } from './SubcategoryDirectory';
 import { getProductBrand } from '../utils/brandHelper';
 import { 
   Flame, 
@@ -21,7 +22,9 @@ import {
   Zap,
   Wrench,
   Home,
-  LayoutGrid
+  LayoutGrid,
+  Layers,
+  ChevronRight
 } from 'lucide-react';
 
 export const StoreFront: React.FC = () => {
@@ -44,6 +47,8 @@ export const StoreFront: React.FC = () => {
   const [minPrice, setMinPrice] = useState<number | ''>('');
   const [maxPrice, setMaxPrice] = useState<number | ''>('');
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string | null>(null);
+  const [selectedLeafTag, setSelectedLeafTag] = useState<string | null>(null);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
   // Distinct Bestseller products ("Хіти продажу")
@@ -82,10 +87,33 @@ export const StoreFront: React.FC = () => {
           p.name.toLowerCase().includes(cat)
         );
       }
+
+      // Filter by Subcategory Card selection
+      if (selectedSubCategory) {
+        const sub = selectedSubCategory.toLowerCase();
+        list = list.filter((p) => 
+          (p.subCategory && p.subCategory.toLowerCase().includes(sub)) ||
+          p.category.toLowerCase().includes(sub) ||
+          p.name.toLowerCase().includes(sub) ||
+          (p.specs && Object.values(p.specs).some((v: any) => String(v).toLowerCase().includes(sub)))
+        );
+      }
+
+      // Filter by Specific Tag / Leaf click
+      if (selectedLeafTag) {
+        const leaf = selectedLeafTag.toLowerCase();
+        list = list.filter((p) => 
+          p.name.toLowerCase().includes(leaf) ||
+          p.category.toLowerCase().includes(leaf) ||
+          (p.subCategory && p.subCategory.toLowerCase().includes(leaf)) ||
+          (p.desc && p.desc.toLowerCase().includes(leaf)) ||
+          (p.specs && Object.values(p.specs).some((v: any) => String(v).toLowerCase().includes(leaf)))
+        );
+      }
     }
 
     return list;
-  }, [products, showWishlistOnly, wishlist, searchQuery, activeCategory]);
+  }, [products, showWishlistOnly, wishlist, searchQuery, activeCategory, selectedSubCategory, selectedLeafTag]);
 
   // 2. Available brands with item counts for current scope
   const availableBrandsWithCounts = useMemo(() => {
@@ -300,13 +328,21 @@ export const StoreFront: React.FC = () => {
                     onClick={() => {
                       if (activeCategory === catName) {
                         setActiveCategory('Усі');
+                        setSelectedSubCategory(null);
+                        setSelectedLeafTag(null);
                       } else {
                         setActiveCategory(catName);
+                        setSelectedSubCategory(null);
+                        setSelectedLeafTag(null);
+                        setTimeout(() => {
+                          const el = document.getElementById('subcategory-gallery-section');
+                          if (el) {
+                            const yOffset = -85;
+                            const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                            window.scrollTo({ top: y, behavior: 'smooth' });
+                          }
+                        }, 80);
                       }
-                      setTimeout(() => {
-                        const el = document.getElementById('catalog-products-section');
-                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }, 50);
                     }}
                     className={`p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer relative overflow-hidden group shadow-2xs ${
                       isActive 
@@ -339,6 +375,33 @@ export const StoreFront: React.FC = () => {
           </section>
         )}
 
+        {/* Subcategory Directory (Showcase Gallery with Photos like in 2nd photo) */}
+        {!showWishlistOnly && activeCategory && activeCategory !== 'Усі' && (
+          <section id="subcategory-gallery-section" className="scroll-mt-20">
+            <SubcategoryDirectory 
+              mainCategory={activeCategory}
+              selectedSubCategory={selectedSubCategory}
+              onSelectSubCategory={(subCat, leafTag) => {
+                setSelectedSubCategory(subCat);
+                setSelectedLeafTag(leafTag || null);
+                setTimeout(() => {
+                  const el = document.getElementById('catalog-products-section');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+              }}
+              onSelectBrand={(subCat, brand) => {
+                setSelectedSubCategory(subCat);
+                setSelectedLeafTag(null);
+                setSelectedBrands([brand]);
+                setTimeout(() => {
+                  const el = document.getElementById('catalog-products-section');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+              }}
+            />
+          </section>
+        )}
+
         {/* Main Catalog Section with Filters */}
         <section id="catalog-products-section" className="space-y-6 pt-4 scroll-mt-20">
           
@@ -351,11 +414,31 @@ export const StoreFront: React.FC = () => {
                 <ShoppingBag className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-lg font-black font-display text-slate-900 leading-tight">
-                  {showWishlistOnly 
-                    ? 'Обрані товари' 
-                    : (activeCategory && activeCategory !== 'Усі' ? activeCategory : 'Каталог сантехніки та товарів')}
-                </h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-lg font-black font-display text-slate-900 leading-tight">
+                    {showWishlistOnly 
+                      ? 'Обрані товари' 
+                      : (activeCategory && activeCategory !== 'Усі' ? activeCategory : 'Каталог сантехніки та товарів')}
+                  </h3>
+                  {selectedSubCategory && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+                      <ChevronRight className="w-3 h-3 text-red-400" />
+                      <span>{selectedSubCategory}</span>
+                      {selectedLeafTag && <span className="font-normal text-red-600">({selectedLeafTag})</span>}
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setSelectedSubCategory(null);
+                          setSelectedLeafTag(null);
+                        }}
+                        className="hover:text-red-900 ml-0.5 cursor-pointer"
+                        title="Скинути підкатегорію"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs text-slate-500 font-medium">
                   {displayProducts.length} позицій знайдено
                 </span>

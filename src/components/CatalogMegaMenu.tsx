@@ -34,7 +34,7 @@ export const CatalogMegaMenu: React.FC<CatalogMegaMenuProps> = ({ isOpen, onClos
     setActiveView('store');
     onClose();
     setTimeout(() => {
-      const el = document.getElementById('catalog-products-section');
+      const el = document.getElementById('subcategory-gallery-section') || document.getElementById('catalog-products-section');
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
