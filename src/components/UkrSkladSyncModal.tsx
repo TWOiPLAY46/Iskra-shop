@@ -21,7 +21,8 @@ import {
   ShieldCheck,
   X
 } from 'lucide-react';
-import { parseUkrSkladXML, generateCommerceMLOrdersXML } from '../utils/ukrSkladSync';
+import { parseUkrSkladFeed, generateCommerceMLOrdersXML } from '../utils/ukrSkladSync';
+import { normalizeStorageUnit } from '../utils/unitFormatter';
 
 interface UkrSkladSyncModalProps {
   isOpen: boolean;
@@ -29,7 +30,7 @@ interface UkrSkladSyncModalProps {
 }
 
 export const UkrSkladSyncModal: React.FC<UkrSkladSyncModalProps> = ({ isOpen, onClose }) => {
-  const { products, orders, saveProduct, showToast } = useStore();
+  const { products, orders, batchSaveProducts, showToast } = useStore();
   const [activeTab, setActiveTab] = useState<'import' | 'export' | 'instructions' | 'api'>('import');
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedSummary, setParsedSummary] = useState<{ newCount: number; updatedCount: number; errors: string[] } | null>(null);
@@ -62,55 +63,14 @@ export const UkrSkladSyncModal: React.FC<UkrSkladSyncModalProps> = ({ isOpen, on
           return;
         }
 
-        const parsed = parseUkrSkladXML(text);
+        const parsed = parseUkrSkladFeed(text);
         if (parsed.products.length === 0) {
-          showToast('Не знайдено товарів у файлі. Перевірте формат XML / CommerceML.', 'error');
+          showToast('Не знайдено товарів у файлі. Перевірте формат XML / CommerceML / CSV.', 'error');
           setIsProcessing(false);
           return;
         }
 
-        let newCount = 0;
-        let updatedCount = 0;
-
-        parsed.products.forEach(newProd => {
-          // Check if exists by SKU or by exact Name
-          const existingProduct = products.find(
-            p => (p.sku && newProd.sku && p.sku.toLowerCase() === newProd.sku.toLowerCase()) ||
-                 (p.name.toLowerCase() === (newProd.name || '').toLowerCase())
-          );
-
-          if (existingProduct) {
-            // Update stock and price, keep existing photos if new has none
-            const updatedProduct: Product = {
-              ...existingProduct,
-              price: newProd.price ?? existingProduct.price,
-              stock: newProd.stock ?? existingProduct.stock,
-              unit: newProd.unit ?? existingProduct.unit,
-              desc: newProd.desc || existingProduct.desc,
-              image: newProd.image || existingProduct.image
-            };
-            saveProduct(updatedProduct);
-            updatedCount++;
-          } else {
-            // Insert as new product
-            const newlyCreatedProduct: Product = {
-              id: newProd.id || `iskra-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-              name: newProd.name || 'Товар без назви',
-              sku: newProd.sku || `SKU-${Date.now()}`,
-              category: newProd.category || 'Сантехніка та опалення',
-              mainCategory: newProd.mainCategory || 'Сантехніка та опалення',
-              subCategory: newProd.subCategory || newProd.category || 'Сантехніка та опалення',
-              price: newProd.price || 100,
-              stock: newProd.stock || 10,
-              unit: newProd.unit || 'шт',
-              desc: newProd.desc || 'Опис товару з програми УкрСклад',
-              image: newProd.image || '',
-              badge: ''
-            };
-            saveProduct(newlyCreatedProduct);
-            newCount++;
-          }
-        });
+        const { newCount, updatedCount } = batchSaveProducts(parsed.products);
 
         setParsedSummary({
           newCount,
@@ -126,7 +86,7 @@ export const UkrSkladSyncModal: React.FC<UkrSkladSyncModalProps> = ({ isOpen, on
       }
     };
 
-    reader.readAsText(file);
+    reader.readAsText(file, 'windows-1251');
   };
 
   // Handle Export Orders to CommerceML XML for UkrSklad

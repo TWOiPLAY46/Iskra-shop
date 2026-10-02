@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
+import { formatUnit, normalizeStorageUnit } from '../utils/unitFormatter';
 import { OnlinePaymentModal } from './OnlinePaymentModal';
 
 const ORDER_STEPS = [
@@ -233,7 +234,7 @@ export const AccountView: React.FC = () => {
           sku: item.sku || 'SKU-' + Math.floor(1000 + Math.random() * 9000),
           stock: 99,
           price: item.price,
-          unit: item.unit || 'грн/шт',
+          unit: normalizeStorageUnit(item.unit),
           desc: '',
           image: item.image || '/src/assets/images/product_circuit_breaker_1790671628425.jpg'
         }, item.qty);
@@ -252,7 +253,7 @@ export const AccountView: React.FC = () => {
     const itemsHtml = order.items?.map(i => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${i.name}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${i.qty} ${i.unit || 'шт'}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;">${i.qty} ${formatUnit(i.unit)}</td>
         <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: right;">${i.price} грн</td>
         <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${(i.price * i.qty).toFixed(2)} грн</td>
       </tr>
@@ -1230,7 +1231,7 @@ export const AccountView: React.FC = () => {
                                         {item.name}
                                       </h4>
                                       <div className="text-[11px] text-slate-500 font-mono">
-                                        {item.qty} {item.unit?.replace('грн/', '') || 'шт.'} × {item.price} грн
+                                        {item.qty} {formatUnit(item.unit)} × {item.price} грн
                                       </div>
                                     </div>
                                   </div>

@@ -13,6 +13,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { getSafeImageUrl, ASSET_IMAGES } from '../utils/assetImages';
+import { formatPriceUnit } from '../utils/unitFormatter';
 
 export const WeeklyDealSection: React.FC = () => {
   const { 
@@ -239,7 +240,7 @@ export const WeeklyDealSection: React.FC = () => {
 
                 <div className="text-xs text-emerald-400 font-bold mt-1 flex items-center gap-1">
                   <span>Ви економите: {savings} грн</span>
-                  <span className="text-[10px] text-slate-400">/{promoProduct.unit.replace('грн/', '') || 'шт'}</span>
+                  <span className="text-[10px] text-slate-400">{formatPriceUnit(promoProduct.unit)}</span>
                 </div>
               </div>
 

@@ -4,6 +4,7 @@ import { useStore } from '../context/StoreContext';
 import { getProductBrand } from '../utils/brandHelper';
 import { ShoppingBag, Heart, Droplets, Zap, Check, AlertTriangle, Flame } from 'lucide-react';
 import { getSafeImageUrl } from '../utils/assetImages';
+import { formatUnit, formatPriceUnit } from '../utils/unitFormatter';
 
 interface ProductCardProps {
   product: Product;
@@ -137,13 +138,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                 </span>
                 <span className="tracking-tight">
-                  Закінчується: <span className="font-extrabold text-amber-950 font-mono">лише {product.stock} {product.unit.replace('грн/', '') || 'шт.'}</span>
+                  Закінчується: <span className="font-extrabold text-amber-950 font-mono">лише {product.stock} {formatUnit(product.unit)}</span>
                 </span>
               </div>
             ) : (
               <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>В наявності ({product.stock} {product.unit.replace('грн/', '') || 'шт.'})</span>
+                <span>В наявності ({product.stock} {formatUnit(product.unit)})</span>
               </span>
             )}
           </div>
@@ -159,7 +160,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
               </span>
             </div>
             <div className="text-[10px] text-slate-400 font-medium mt-0.5">
-              /{product.unit.replace('грн/', '') || 'шт'}
+              {formatPriceUnit(product.unit)}
             </div>
           </div>
 

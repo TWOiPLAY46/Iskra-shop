@@ -18,6 +18,7 @@ import { getProductBrand } from '../utils/brandHelper';
 import { getSafeImageUrl } from '../utils/assetImages';
 import { ProductReviewsSection } from './ProductReviewsSection';
 import { getSmartRecommendedProducts } from '../utils/recommendationsHelper';
+import { formatUnit, formatPriceUnit } from '../utils/unitFormatter';
 
 export const ProductDetailModal: React.FC = () => {
   const { 
@@ -187,12 +188,12 @@ export const ProductDetailModal: React.FC = () => {
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                         </span>
-                        <span>Закінчується: лише {quickViewProduct.stock} {quickViewProduct.unit.replace('грн/', '') || 'шт.'}</span>
+                        <span>Закінчується: лише {quickViewProduct.stock} {formatUnit(quickViewProduct.unit)}</span>
                       </span>
                     ) : (
                       <span className="font-bold text-emerald-600 flex items-center gap-1 text-xs">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        В наявності: {quickViewProduct.stock} {quickViewProduct.unit.replace('грн/', '') || 'шт.'}
+                        В наявності: {quickViewProduct.stock} {formatUnit(quickViewProduct.unit)}
                       </span>
                     )}
                   </div>
@@ -290,7 +291,7 @@ export const ProductDetailModal: React.FC = () => {
                   <span className="text-base font-bold text-red-600">грн</span>
                 </div>
                 <div className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  /{quickViewProduct.unit.replace('грн/', '') || 'шт'}
+                  {formatPriceUnit(quickViewProduct.unit)}
                 </div>
               </div>
 

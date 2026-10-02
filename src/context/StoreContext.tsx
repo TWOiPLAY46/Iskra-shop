@@ -42,6 +42,7 @@ import {
   clearSecureSession, 
   verifySecureSession 
 } from '../services/adminSecurityService';
+import { formatUnit, normalizeStorageUnit } from '../utils/unitFormatter';
 
 interface StoreContextType {
   products: Product[];
@@ -101,6 +102,7 @@ interface StoreContextType {
 
   // Products CRUD
   saveProduct: (product: Product) => void;
+  batchSaveProducts: (items: Partial<Product>[]) => { newCount: number; updatedCount: number };
   deleteProduct: (productId: string) => void;
   clearAllProductPhotos: () => void;
   updateProductStock: (productId: string, newStock: number) => void;
@@ -195,7 +197,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...p,
           id: p.id && String(p.id).trim() !== '' ? String(p.id).trim() : `prod-auto-${idx}`,
           image: p.image !== undefined && p.image !== null ? p.image : '',
-          stock: p.stock !== undefined && p.stock !== null ? p.stock : 0
+          stock: p.stock !== undefined && p.stock !== null ? p.stock : 0,
+          unit: normalizeStorageUnit(p.unit)
         }));
     }
 
@@ -205,7 +208,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...p,
         id: p.id && String(p.id).trim() !== '' ? String(p.id).trim() : `prod-auto-${idx}`,
         image: p.image !== undefined && p.image !== null ? p.image : '',
-        stock: p.stock !== undefined && p.stock !== null ? p.stock : 15
+        stock: p.stock !== undefined && p.stock !== null ? p.stock : 15,
+        unit: normalizeStorageUnit(p.unit)
       }));
   });
 
@@ -1006,7 +1010,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (activeBotToken && activeChatId) {
       try {
         const itemsList = cart
-          .map((i) => `• ${i.name} — ${i.qty} шт. (${i.price} грн/${i.unit.replace('грн/', '')})`)
+          .map((i) => `• ${i.name} — ${i.qty} ${formatUnit(i.unit)} (${i.price} грн/${formatUnit(i.unit)})`)
           .join('\n');
         const tgMsg =
           `⚡ *Нове замовлення №${orderId} на сайті ISKRA*\n\n` +
@@ -1156,13 +1160,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Products CRUD
   const saveProduct = (product: Product) => {
+    const sanitizedProduct: Product = {
+      ...product,
+      unit: normalizeStorageUnit(product.unit)
+    };
     let next: Product[];
-    const idx = products.findIndex((p) => p.id === product.id);
+    const idx = products.findIndex((p) => p.id === sanitizedProduct.id);
     if (idx > -1) {
       next = [...products];
-      next[idx] = product;
+      next[idx] = sanitizedProduct;
     } else {
-      next = [product, ...products];
+      next = [sanitizedProduct, ...products];
     }
     setProducts(next);
     localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
@@ -1171,8 +1179,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let currentDeleted: string[] = [];
     try {
       currentDeleted = JSON.parse(localStorage.getItem('iskra_deleted_product_ids_v1') || '[]');
-      if (currentDeleted.includes(product.id)) {
-        currentDeleted = currentDeleted.filter(id => id !== product.id);
+      if (currentDeleted.includes(sanitizedProduct.id)) {
+        currentDeleted = currentDeleted.filter(id => id !== sanitizedProduct.id);
         localStorage.setItem('iskra_deleted_product_ids_v1', JSON.stringify(currentDeleted));
       }
     } catch {}
@@ -1180,9 +1188,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Auto-register category hierarchy into categoriesTree if new
     let updatedTree = { ...categoriesTree };
     let treeChanged = false;
-    const main = product.mainCategory?.trim();
-    const sub = product.subCategory?.trim();
-    const leaf = product.category?.trim();
+    const main = sanitizedProduct.mainCategory?.trim();
+    const sub = sanitizedProduct.subCategory?.trim();
+    const leaf = sanitizedProduct.category?.trim();
 
     if (main) {
       if (!updatedTree[main]) {
@@ -1228,6 +1236,129 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         lastSyncTimestamp: Date.now() 
       });
     }
+  };
+
+  const batchSaveProducts = (items: Partial<Product>[]): { newCount: number; updatedCount: number } => {
+    if (!items || items.length === 0) return { newCount: 0, updatedCount: 0 };
+
+    let newCount = 0;
+    let updatedCount = 0;
+    let currentProducts = [...products];
+    let updatedTree = { ...categoriesTree };
+    let treeChanged = false;
+
+    // Build lookup maps for fast matching
+    const skuMap = new Map<string, number>();
+    const nameMap = new Map<string, number>();
+    const idMap = new Map<string, number>();
+
+    currentProducts.forEach((p, index) => {
+      if (p.id) idMap.set(p.id.toLowerCase().trim(), index);
+      if (p.sku && p.sku.trim()) skuMap.set(p.sku.toLowerCase().trim(), index);
+      if (p.name && p.name.trim()) nameMap.set(p.name.toLowerCase().trim(), index);
+    });
+
+    const itemsToPrepend: Product[] = [];
+
+    items.forEach((item, i) => {
+      const sanitized: Product = {
+        id: item.id && item.id.trim() !== '' ? item.id.trim() : `iskra-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+        name: item.name ? item.name.trim() : 'Товар без назви',
+        brand: item.brand ? item.brand.trim() : undefined,
+        sku: item.sku ? item.sku.trim() : `SKU-${Date.now()}-${i}`,
+        price: typeof item.price === 'number' && !isNaN(item.price) ? item.price : parseFloat(String(item.price)) || 0,
+        stock: typeof item.stock === 'number' && !isNaN(item.stock) ? item.stock : parseInt(String(item.stock)) || 0,
+        unit: normalizeStorageUnit(item.unit),
+        category: item.category ? item.category.trim() : 'Сантехніка та опалення',
+        mainCategory: item.mainCategory ? item.mainCategory.trim() : 'Сантехніка та опалення',
+        subCategory: item.subCategory ? item.subCategory.trim() : (item.category ? item.category.trim() : 'Сантехніка та опалення'),
+        desc: item.desc || '',
+        image: item.image || '',
+        badge: item.badge || ''
+      };
+
+      const cleanSku = sanitized.sku.toLowerCase().trim();
+      const cleanName = sanitized.name.toLowerCase().trim();
+      const cleanId = sanitized.id.toLowerCase().trim();
+
+      let matchIndex: number | undefined;
+      if (idMap.has(cleanId)) {
+        matchIndex = idMap.get(cleanId);
+      } else if (cleanSku && skuMap.has(cleanSku)) {
+        matchIndex = skuMap.get(cleanSku);
+      } else if (cleanName && nameMap.has(cleanName)) {
+        matchIndex = nameMap.get(cleanName);
+      }
+
+      if (matchIndex !== undefined && matchIndex >= 0 && matchIndex < currentProducts.length) {
+        // Update existing product
+        const existing = currentProducts[matchIndex];
+        currentProducts[matchIndex] = {
+          ...existing,
+          name: sanitized.name,
+          price: sanitized.price !== undefined ? sanitized.price : existing.price,
+          stock: sanitized.stock !== undefined ? sanitized.stock : existing.stock,
+          unit: sanitized.unit || existing.unit,
+          category: sanitized.category || existing.category,
+          mainCategory: sanitized.mainCategory || existing.mainCategory,
+          subCategory: sanitized.subCategory || existing.subCategory,
+          desc: sanitized.desc || existing.desc,
+          image: sanitized.image || existing.image
+        };
+        updatedCount++;
+      } else {
+        // New product
+        itemsToPrepend.push(sanitized);
+        newCount++;
+        const newIdx = currentProducts.length + itemsToPrepend.length - 1;
+        if (cleanSku) skuMap.set(cleanSku, newIdx);
+        if (cleanName) nameMap.set(cleanName, newIdx);
+      }
+
+      // Category tree auto-registration
+      const main = sanitized.mainCategory;
+      const sub = sanitized.subCategory;
+      const leaf = sanitized.category;
+      if (main) {
+        if (!updatedTree[main]) {
+          updatedTree[main] = { _leaves: [] };
+          treeChanged = true;
+        }
+        if (sub) {
+          if (!updatedTree[main][sub] || !Array.isArray(updatedTree[main][sub])) {
+            updatedTree[main] = { ...updatedTree[main], [sub]: [] };
+            treeChanged = true;
+          }
+          if (leaf && !updatedTree[main][sub].includes(leaf)) {
+            updatedTree[main] = {
+              ...updatedTree[main],
+              [sub]: [...updatedTree[main][sub], leaf]
+            };
+            treeChanged = true;
+          }
+        }
+      }
+    });
+
+    const nextProducts = [...itemsToPrepend, ...currentProducts];
+    setProducts(nextProducts);
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(nextProducts));
+
+    if (treeChanged) {
+      setCategoriesTree(updatedTree);
+      localStorage.setItem('iskra_categories_tree_react', JSON.stringify(updatedTree));
+    }
+
+    if (firebaseConfig.enabled) {
+      pushStoreToFirebase(firebaseConfig, {
+        products: nextProducts,
+        categoriesTree: treeChanged ? updatedTree : categoriesTree,
+        lastSyncTimestamp: Date.now()
+      }).catch(e => console.warn('Firebase batch sync error:', e));
+    }
+
+    showToast(`Успішно додано ${newCount} нових товарів, ${updatedCount} оновлено!`, 'success');
+    return { newCount, updatedCount };
   };
 
   const deleteProduct = (productId: string) => {
@@ -1337,43 +1468,124 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const importProductsCSV = (csvText: string): number => {
-    const lines = csvText.split('\n');
-    let imported = 0;
-    const newItems: Product[] = [];
+    if (!csvText || !csvText.trim()) return 0;
 
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    // Detect delimiter
+    const firstLine = csvText.split('\n')[0] || '';
+    let delimiter = ',';
+    if (firstLine.includes(';') && firstLine.split(';').length > firstLine.split(',').length) {
+      delimiter = ';';
+    } else if (firstLine.includes('\t') && firstLine.split('\t').length > firstLine.split(',').length) {
+      delimiter = '\t';
+    }
+
+    const parseLineToCols = (line: string): string[] => {
       const row: string[] = [];
       let inQ = false;
       let cur = '';
 
       for (let c of line) {
         if (c === '"') inQ = !inQ;
-        else if (c === ',' && !inQ) {
-          row.push(cur.trim());
+        else if (c === delimiter && !inQ) {
+          row.push(cur.trim().replace(/^["']|["']$/g, ''));
           cur = '';
         } else {
           cur += c;
         }
       }
-      row.push(cur.trim());
+      row.push(cur.trim().replace(/^["']|["']$/g, ''));
+      return row;
+    };
 
-      if (row.length >= 6 && row[1]) {
-        const id = row[0] || 'prod-' + Date.now() + '-' + i;
-        const name = row[1].replace(/^"|"$/g, '');
-        const category = row[2] ? row[2].replace(/^"|"$/g, '') : 'Інше';
-        const badge = (row[3] ? row[3].replace(/^"|"$/g, '') : '') as any;
-        const sku = row[4] ? row[4].replace(/^"|"$/g, '') : 'SKU-' + i;
-        const stock = parseInt(row[5]) || 10;
-        const price = parseFloat(row[6]) || 0;
-        const unit = row[7] ? row[7].replace(/^"|"$/g, '') : 'грн/шт';
-        const desc = row[8] ? row[8].replace(/^"|"$/g, '') : '';
-        const image = row[9] ? row[9].replace(/^"|"$/g, '').trim() : '';
+    const rawLines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
+    if (rawLines.length === 0) return 0;
 
-        newItems.push({ id, name, category, badge, sku, stock, price, unit, desc, image });
-        imported++;
-      }
+    const headerCols = parseLineToCols(rawLines[0]).map(h => h.toLowerCase().trim());
+    
+    // Check if first line is a header
+    const hasHeader = headerCols.some(h => 
+      h.includes('name') || h.includes('назв') || h.includes('наймен') || 
+      h.includes('sku') || h.includes('арт') || h.includes('код') || 
+      h.includes('price') || h.includes('цін') || h.includes('цен') ||
+      h.includes('stock') || h.includes('залиш') || h.includes('кільк') || h.includes('кол')
+    );
+
+    let idIdx = headerCols.findIndex(h => h === 'id' || h === 'код' || h === 'код товару');
+    let nameIdx = headerCols.findIndex(h => h.includes('name') || h.includes('назв') || h.includes('наймен') || h.includes('товар'));
+    let catIdx = headerCols.findIndex(h => h.includes('cat') || h.includes('катег') || h.includes('груп'));
+    let badgeIdx = headerCols.findIndex(h => h.includes('badge') || h.includes('бейдж') || h.includes('акція') || h.includes('мітка'));
+    let skuIdx = headerCols.findIndex(h => h.includes('sku') || h.includes('арт') || h.includes('штрих') || h.includes('код_тов'));
+    let stockIdx = headerCols.findIndex(h => h.includes('stock') || h.includes('залиш') || h.includes('кільк') || h.includes('остат') || h.includes('кол'));
+    let priceIdx = headerCols.findIndex(h => h.includes('price') || h.includes('цін') || h.includes('цен') || h.includes('вартість'));
+    let unitIdx = headerCols.findIndex(h => h.includes('unit') || h.includes('од') || h.includes('один') || h.includes('ед'));
+    let descIdx = headerCols.findIndex(h => h.includes('desc') || h.includes('опис') || h.includes('приміт'));
+    let imageIdx = headerCols.findIndex(h => h.includes('imag') || h.includes('фото') || h.includes('зображ') || h.includes('картин'));
+
+    // Fallbacks if no header detected
+    if (!hasHeader) {
+      idIdx = 0;
+      nameIdx = 1;
+      catIdx = 2;
+      badgeIdx = 3;
+      skuIdx = 4;
+      stockIdx = 5;
+      priceIdx = 6;
+      unitIdx = 7;
+      descIdx = 8;
+      imageIdx = 9;
+    } else {
+      if (nameIdx === -1) nameIdx = 0;
+    }
+
+    const startIndex = hasHeader ? 1 : 0;
+    let imported = 0;
+    const newItems: Product[] = [];
+
+    for (let i = startIndex; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      if (!line) continue;
+      const cols = parseLineToCols(line);
+      if (cols.length < 2) continue;
+
+      const rawName = (nameIdx >= 0 && cols[nameIdx]) ? cols[nameIdx] : (cols[1] || cols[0]);
+      if (!rawName || !rawName.trim()) continue;
+
+      const name = rawName.trim();
+      const id = (idIdx >= 0 && cols[idIdx]) ? cols[idIdx].trim() : `prod-csv-${Date.now()}-${i}`;
+      const category = (catIdx >= 0 && cols[catIdx]) ? cols[catIdx].trim() : 'Сантехніка та опалення';
+      const badge = (badgeIdx >= 0 && cols[badgeIdx] ? cols[badgeIdx].trim() : '') as any;
+      const sku = (skuIdx >= 0 && cols[skuIdx]) ? cols[skuIdx].trim() : `SKU-${Date.now()}-${i}`;
+      
+      // Stock parsing
+      let rawStock = stockIdx >= 0 && cols[stockIdx] ? cols[stockIdx] : '10';
+      let stock = parseInt(String(rawStock).replace(/[^\d]/g, '')) || 0;
+
+      // Price parsing
+      let rawPrice = priceIdx >= 0 && cols[priceIdx] ? cols[priceIdx] : '0';
+      let price = parseFloat(String(rawPrice).replace(',', '.').replace(/[^\d.]/g, '')) || 0;
+
+      // Unit parsing & strict validation
+      const rawUnit = unitIdx >= 0 && cols[unitIdx] ? cols[unitIdx] : 'грн/шт';
+      const unit = normalizeStorageUnit(rawUnit);
+
+      const desc = descIdx >= 0 && cols[descIdx] ? cols[descIdx].trim() : '';
+      const image = imageIdx >= 0 && cols[imageIdx] ? cols[imageIdx].trim() : '';
+
+      newItems.push({
+        id,
+        name,
+        category,
+        mainCategory: category.includes('Електр') ? 'Електротовари' : category.includes('Інструмент') ? 'Інструменти та обладнання' : category.includes('Господар') ? 'Господарчі товари' : 'Сантехніка та опалення',
+        subCategory: category,
+        badge,
+        sku,
+        stock,
+        price,
+        unit,
+        desc,
+        image
+      });
+      imported++;
     }
 
     if (newItems.length > 0) {
@@ -1756,6 +1968,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteOrder,
         clearAllOrders,
         saveProduct,
+        batchSaveProducts,
         deleteProduct,
         clearAllProductPhotos,
         updateProductStock,

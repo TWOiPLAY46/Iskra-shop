@@ -16,6 +16,7 @@ import {
 import { Product } from '../types/store';
 import { getSafeImageUrl } from '../utils/assetImages';
 import { getSmartRecommendedProducts } from '../utils/recommendationsHelper';
+import { formatUnit } from '../utils/unitFormatter';
 
 export const CartDrawer: React.FC = () => {
   const { 
@@ -190,7 +191,7 @@ export const CartDrawer: React.FC = () => {
                           </h4>
                           <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mb-2">
                             {item.sku && <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{item.sku}</span>}
-                            <span>{item.price} {item.unit}</span>
+                            <span>{item.price} грн/{formatUnit(item.unit)}</span>
                           </div>
 
                           {/* Stepper + Total Price + Delete button */}

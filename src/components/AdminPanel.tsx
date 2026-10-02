@@ -71,6 +71,7 @@ import {
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
 import { UkrSkladSyncModal } from './UkrSkladSyncModal';
+import { formatUnit, formatPriceUnit, normalizeStorageUnit } from '../utils/unitFormatter';
 import { trackNovaPoshtaTTN, searchUkrposhtaOffices, UkrposhtaOffice } from '../services/deliveryService';
 import { sendTelegramAlert } from '../utils/telegramHelper';
 import { 
@@ -1141,7 +1142,7 @@ export const AdminPanel: React.FC = () => {
     setPSku(p.sku);
     setPStock(p.stock);
     setPPrice(p.price);
-    setPUnit(p.unit);
+    setPUnit(normalizeStorageUnit(p.unit));
     setPDesc(p.desc);
     setPImage(p.image);
     setProductImageUploadError(null);
@@ -1164,7 +1165,7 @@ export const AdminPanel: React.FC = () => {
       sku: pSku || 'SKU-' + Date.now(),
       stock: Number(pStock) || 0,
       price: Number(pPrice) || 0,
-      unit: pUnit,
+      unit: normalizeStorageUnit(pUnit),
       desc: pDesc,
       image: pImage ? pImage.trim() : '',
       specs: editingProduct?.specs
@@ -1319,7 +1320,7 @@ export const AdminPanel: React.FC = () => {
               ${(order.items || []).map((i: any) => `
                 <tr>
                   <td>${i.name}</td>
-                  <td>${i.qty} ${i.unit}</td>
+                  <td>${i.qty} ${formatUnit(i.unit)}</td>
                   <td>${i.price} грн</td>
                   <td>${(i.qty * i.price).toFixed(2)} грн</td>
                 </tr>
@@ -1413,7 +1414,7 @@ export const AdminPanel: React.FC = () => {
                   <td><b>${p.name}</b></td>
                   <td>${p.category}</td>
                   <td style="text-align: center;" class="${p.stock <= 0 ? 'stock-zero' : 'stock-low'}">
-                    ${p.stock <= 0 ? '❌ 0 (Немає)' : `⚠️ ${p.stock} ${p.unit}`}
+                    ${p.stock <= 0 ? '❌ 0 (Немає)' : `⚠️ ${p.stock} ${formatUnit(p.unit)}`}
                   </td>
                   <td style="text-align: center;" class="suggested">
                     +${Math.max(10, 20 - p.stock)} шт.
@@ -2891,7 +2892,7 @@ export const AdminPanel: React.FC = () => {
                             price={p.price}
                             updateProductPrice={updateProductPrice}
                           />
-                          <span className="text-[10px] text-slate-400">{p.unit}</span>
+                          <span className="text-[10px] text-slate-400 font-medium">/{formatUnit(p.unit)}</span>
                         </div>
                       </td>
                       <td className="py-2.5 px-4 text-right space-x-1">
@@ -3467,7 +3468,7 @@ export const AdminPanel: React.FC = () => {
                       <ul className="mt-1 space-y-1 text-slate-600 pl-4 list-disc">
                         {o.items?.map((item: any, idx: number) => (
                           <li key={idx} className="leading-snug">
-                            <span className="font-medium text-slate-900">{item.name}</span> — <b>{item.qty} {item.unit}</b> ({item.price} грн)
+                            <span className="font-medium text-slate-900">{item.name}</span> — <b>{item.qty} {formatUnit(item.unit)}</b> ({item.price} грн)
                           </li>
                         ))}
                       </ul>
@@ -3711,7 +3712,7 @@ export const AdminPanel: React.FC = () => {
                               >
                                 +
                               </button>
-                              <span className="text-[10px] text-slate-400">{it.unit}</span>
+                              <span className="text-[10px] text-slate-400">/{formatUnit(it.unit)}</span>
                             </div>
 
                             {/* Price */}
