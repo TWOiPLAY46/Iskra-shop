@@ -45,6 +45,7 @@ import {
 import { formatUnit, normalizeStorageUnit } from '../utils/unitFormatter';
 import { parseProductCSV, CsvImportOptions } from '../utils/csvProductParser';
 import { classifyProduct } from '../utils/categoryClassifier';
+import { autoFindBestImageForProduct } from '../utils/productImageSearch';
 
 interface StoreContextType {
   products: Product[];
@@ -115,6 +116,10 @@ interface StoreContextType {
   batchUpdateSelectedProducts: (ids: string[], updates: { price?: number; stock?: number }) => void;
   batchDeleteProducts: (ids: string[]) => void;
   autoClassifyProducts: (productIds?: string[]) => void;
+  autoAssignProductImages: (
+    targetProductIds?: string[],
+    onProgress?: (current: number, total: number, itemName: string) => void
+  ) => Promise<{ updatedCount: number; total: number }>;
   resetDefaultCatalog: () => void;
   exportProductsCSV: () => string;
   importProductsCSV: (csvText: string, options?: CsvImportOptions) => number;
@@ -1583,6 +1588,65 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const autoAssignProductImages = async (
+    targetProductIds?: string[],
+    onProgress?: (current: number, total: number, itemName: string) => void
+  ): Promise<{ updatedCount: number; total: number }> => {
+    const idSet = targetProductIds && targetProductIds.length > 0 ? new Set(targetProductIds) : null;
+    const candidates = products.filter(p => (!idSet || idSet.has(p.id)) && (!p.image || p.image.trim() === ''));
+
+    if (candidates.length === 0) {
+      showToast('Всі обрані товари вже мають фотографії!', 'info');
+      return { updatedCount: 0, total: 0 };
+    }
+
+    let updatedCount = 0;
+    const updatedMap = new Map<string, string>();
+
+    for (let i = 0; i < candidates.length; i++) {
+      const prod = candidates[i];
+      if (onProgress) {
+        onProgress(i + 1, candidates.length, prod.name);
+      }
+      try {
+        const foundUrl = await autoFindBestImageForProduct(prod.name);
+        if (foundUrl) {
+          updatedMap.set(prod.id, foundUrl);
+          updatedCount++;
+        }
+      } catch (err) {
+        console.warn('Error fetching image for', prod.name, err);
+      }
+      // Brief pause to prevent network spam
+      await new Promise(r => setTimeout(r, 60));
+    }
+
+    if (updatedCount > 0) {
+      const next = products.map(p => {
+        if (updatedMap.has(p.id)) {
+          return { ...p, image: updatedMap.get(p.id)! };
+        }
+        return p;
+      });
+
+      setProducts(next);
+      localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
+
+      if (firebaseConfig.enabled) {
+        pushStoreToFirebase(firebaseConfig, {
+          products: next,
+          lastSyncTimestamp: Date.now()
+        });
+      }
+
+      showToast(`Успішно знайдено та закріплено фото для ${updatedCount} товарів!`, 'success');
+    } else {
+      showToast('Не вдалося знайти фото для цих товарів у мережі', 'info');
+    }
+
+    return { updatedCount, total: candidates.length };
+  };
+
   const resetDefaultCatalog = () => {
     localStorage.removeItem('iskra_deleted_product_ids_v1');
     setProducts(initialProducts);
@@ -1997,6 +2061,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         batchUpdateSelectedProducts,
         batchDeleteProducts,
         autoClassifyProducts,
+        autoAssignProductImages,
         resetDefaultCatalog,
         exportProductsCSV,
         importProductsCSV,

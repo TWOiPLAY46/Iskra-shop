@@ -74,6 +74,7 @@ import { LiveTrackingWidget } from './LiveTrackingWidget';
 import { UkrSkladSyncModal } from './UkrSkladSyncModal';
 import { CsvImportModal } from './CsvImportModal';
 import { formatUnit, formatPriceUnit, normalizeStorageUnit } from '../utils/unitFormatter';
+import { searchImagesOnline, FoundImage } from '../utils/productImageSearch';
 import { trackNovaPoshtaTTN, searchUkrposhtaOffices, UkrposhtaOffice } from '../services/deliveryService';
 import { sendTelegramAlert } from '../utils/telegramHelper';
 import { 
@@ -572,6 +573,7 @@ export const AdminPanel: React.FC = () => {
     batchUpdateSelectedProducts,
     batchDeleteProducts,
     autoClassifyProducts,
+    autoAssignProductImages,
     exportProductsCSV,
     importProductsCSV,
     resetDefaultCatalog,
@@ -673,6 +675,11 @@ export const AdminPanel: React.FC = () => {
   const [batchStockInput, setBatchStockInput] = useState<number | string>('');
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
 
+  // Auto-find images state (batch)
+  const [isAutoFindingImages, setIsAutoFindingImages] = useState(false);
+  const [autoImageProgress, setAutoImageProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [showAutoImageModal, setShowAutoImageModal] = useState(false);
+
   const filteredProducts = products.filter((p) => {
     const matchQ = p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase());
     const matchStock = 
@@ -707,7 +714,35 @@ export const AdminPanel: React.FC = () => {
   const [pImage, setPImage] = useState('');
   const [isUploadingProductImage, setIsUploadingProductImage] = useState(false);
   const [productImageUploadError, setProductImageUploadError] = useState<string | null>(null);
-  const [productImageTab, setProductImageTab] = useState<'upload' | 'url'>('upload');
+  const [productImageTab, setProductImageTab] = useState<'upload' | 'search' | 'url'>('upload');
+  const [onlineImageQuery, setOnlineImageQuery] = useState('');
+  const [isSearchingOnlineImages, setIsSearchingOnlineImages] = useState(false);
+  const [foundOnlineImages, setFoundOnlineImages] = useState<FoundImage[]>([]);
+  const [onlineImageError, setOnlineImageError] = useState<string | null>(null);
+
+  // Search images online via web APIs
+  const handleSearchOnlineImages = async (customQuery?: string) => {
+    const rawQ = customQuery !== undefined ? customQuery : (onlineImageQuery || pName);
+    const q = rawQ?.trim();
+    if (!q) {
+      showToast('Введіть назву товару або ключове слово для пошуку', 'info');
+      return;
+    }
+    setIsSearchingOnlineImages(true);
+    setOnlineImageError(null);
+    try {
+      const results = await searchImagesOnline(q, 16);
+      setFoundOnlineImages(results);
+      if (results.length === 0) {
+        setOnlineImageError('Не вдалося знайти фото за цим запитом. Спробуйте змінити пошукову фразу (наприклад, видалити зайві цифри або написати бренд та тип товару).');
+      }
+    } catch (e: any) {
+      console.error('Search images error:', e);
+      setOnlineImageError('Помилка під час пошуку зображень в інтернеті.');
+    } finally {
+      setIsSearchingOnlineImages(false);
+    }
+  };
 
   // Handler for uploading product image from local PC
   const handleProductImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1010,6 +1045,9 @@ export const AdminPanel: React.FC = () => {
     setPImage('');
     setProductImageUploadError(null);
     setProductImageTab('upload');
+    setOnlineImageQuery('');
+    setFoundOnlineImages([]);
+    setOnlineImageError(null);
     setIsProductModalOpen(true);
   };
 
@@ -1172,27 +1210,37 @@ export const AdminPanel: React.FC = () => {
     setPDesc(p.desc);
     setPImage(p.image);
     setProductImageUploadError(null);
-    setProductImageTab('upload');
+    setProductImageTab(p.image && p.image.trim() !== '' ? 'upload' : 'search');
+    setOnlineImageQuery(p.name);
+    setFoundOnlineImages([]);
+    setOnlineImageError(null);
     setIsProductModalOpen(true);
   };
 
   const handleSaveProductForm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pName.trim()) return;
+    if (!pName || !pName.trim()) {
+      showToast('Будь ласка, вкажіть назву товару!', 'error');
+      return;
+    }
+
+    const cleanSku = (pSku && pSku.trim()) ? pSku.trim() : (editingProduct?.sku || `SKU-${Date.now().toString().slice(-6)}`);
+    const cleanStock = pStock === '' || isNaN(Number(pStock)) ? 0 : Math.max(0, Number(pStock));
+    const cleanPrice = pPrice === '' || isNaN(Number(pPrice)) ? 0 : Math.max(0, Number(pPrice));
 
     const savedProd: Product = {
       id: editingProduct ? editingProduct.id : 'prod-' + Date.now(),
-      name: pName,
+      name: pName.trim(),
       brand: pBrand.trim() || undefined,
       category: pLeafCat || pSubCat || pMainCat || 'Загальне',
       mainCategory: pMainCat,
       subCategory: pSubCat,
       badge: pBadge,
-      sku: pSku || 'SKU-' + Date.now(),
-      stock: Number(pStock) || 0,
-      price: Number(pPrice) || 0,
+      sku: cleanSku,
+      stock: cleanStock,
+      price: cleanPrice,
       unit: normalizeStorageUnit(pUnit),
-      desc: pDesc,
+      desc: pDesc || '',
       image: pImage ? pImage.trim() : '',
       specs: editingProduct?.specs
     };
@@ -2731,6 +2779,29 @@ export const AdminPanel: React.FC = () => {
                 <Sparkles className="w-4 h-4 text-indigo-600" />
                 <span>Авто-категорії</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const noPhotoCount = products.filter(p => !p.image || p.image.trim() === '').length;
+                  if (noPhotoCount === 0) {
+                    showToast('Усі товари в каталозі вже мають фотографії!', 'info');
+                    return;
+                  }
+                  setShowAutoImageModal(true);
+                }}
+                disabled={isAutoFindingImages}
+                className="px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-sky-200 shadow-2xs disabled:opacity-50"
+                title="Автоматично знайти та підв'язати фото в інтернеті для всіх товарів без зображень"
+              >
+                <ImageIcon className={`w-4 h-4 text-sky-600 ${isAutoFindingImages ? 'animate-pulse' : ''}`} />
+                <span>{isAutoFindingImages ? 'Підбір фото...' : 'Авто-фото'}</span>
+                {products.filter(p => !p.image || p.image.trim() === '').length > 0 && (
+                  <span className="px-1.5 py-0.2 bg-sky-200 text-sky-900 rounded-full text-[10px] font-extrabold">
+                    {products.filter(p => !p.image || p.image.trim() === '').length}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
@@ -2823,7 +2894,7 @@ export const AdminPanel: React.FC = () => {
                   <input
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="any"
                     placeholder="Нова ціна"
                     value={batchPriceInput}
                     onChange={(e) => setBatchPriceInput(e.target.value)}
@@ -2854,6 +2925,28 @@ export const AdminPanel: React.FC = () => {
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                   <span>Авто-категорії</span>
+                </button>
+
+                {/* Auto-find photos for selected */}
+                <button
+                  type="button"
+                  disabled={isAutoFindingImages}
+                  onClick={async () => {
+                    setIsAutoFindingImages(true);
+                    try {
+                      await autoAssignProductImages(selectedProductIds, (cur, tot, name) => {
+                        setAutoImageProgress({ current: cur, total: tot, name });
+                      });
+                    } finally {
+                      setIsAutoFindingImages(false);
+                      setAutoImageProgress(null);
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                  title="Знайти фото в інтернеті для виділених товарів"
+                >
+                  <ImageIcon className="w-3.5 h-3.5 text-sky-200" />
+                  <span>{isAutoFindingImages ? 'Пошук...' : `Знайти фото (${selectedProductIds.length})`}</span>
                 </button>
 
                 {/* Delete Selected with Confirmation */}
@@ -2941,19 +3034,43 @@ export const AdminPanel: React.FC = () => {
                       />
                     </td>
                     <td className="py-2.5 px-4">
-                        {p.image && p.image.trim() !== '' ? (
+                      {p.image && p.image.trim() !== '' ? (
+                        <div className="relative group/img w-10 h-10">
                           <img
                             src={getSafeImageUrl(p.image)}
                             alt={p.name}
-                            className="w-10 h-10 rounded-lg object-contain bg-slate-100 p-0.5"
+                            className="w-10 h-10 rounded-lg object-contain bg-slate-100 p-0.5 border border-slate-200"
                             referrerPolicy="no-referrer"
                           />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
-                            <Package className="w-5 h-5" />
-                          </div>
-                        )}
-                      </td>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleOpenEditProduct(p);
+                              setProductImageTab('search');
+                              handleSearchOnlineImages(p.name);
+                            }}
+                            className="absolute inset-0 bg-slate-950/60 rounded-lg opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer shadow-xs"
+                            title="Змінити фото через інтернет"
+                          >
+                            <Search className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleOpenEditProduct(p);
+                            setProductImageTab('search');
+                            handleSearchOnlineImages(p.name);
+                          }}
+                          className="w-10 h-10 rounded-lg bg-orange-50 border border-dashed border-orange-300 hover:border-orange-500 hover:bg-orange-100 flex flex-col items-center justify-center text-orange-600 transition-all cursor-pointer group shadow-2xs"
+                          title="Знайти фото в інтернеті для цього товару"
+                        >
+                          <Search className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                          <span className="text-[7.5px] font-extrabold leading-none mt-0.5">+ фото</span>
+                        </button>
+                      )}
+                    </td>
                       <td className="py-2.5 px-4 max-w-xs">
                         <div className="font-bold text-slate-900 leading-snug line-clamp-1">
                           {p.name}
@@ -5383,7 +5500,11 @@ export const AdminPanel: React.FC = () => {
             <div className="relative bg-white rounded-2xl max-w-3xl sm:max-w-4xl lg:max-w-5xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200">
               <h3 className="text-base font-bold font-display text-slate-900 mb-4 pb-3 border-b border-slate-100 flex items-center justify-between">
                 <span>{editingProduct ? 'Редагувати товар' : 'Додати новий товар'}</span>
-                <button onClick={() => setIsProductModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <button
+                  type="button"
+                  onClick={() => setIsProductModalOpen(false)}
+                  className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer text-lg font-bold"
+                >
                   ×
                 </button>
               </h3>
@@ -5610,13 +5731,13 @@ export const AdminPanel: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Артикул (SKU) *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">Артикул (SKU)</label>
                     <input
                       type="text"
-                      required
+                      placeholder="напр., ISK-492 або залиште порожнім"
                       value={pSku}
                       onChange={(e) => setPSku(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs"
                     />
                   </div>
 
@@ -5625,7 +5746,7 @@ export const AdminPanel: React.FC = () => {
                     <select
                       value={pBadge}
                       onChange={(e) => setPBadge(e.target.value as ProductBadge)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs"
                     >
                       <option value="">(Без мітки)</option>
                       <option value="Хіт продажу">🔥 Хіт продажу</option>
@@ -5637,11 +5758,12 @@ export const AdminPanel: React.FC = () => {
 
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Залишок (склад) *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">Залишок (склад)</label>
                     <input
                       type="number"
-                      required
                       min="0"
+                      step="any"
+                      placeholder="0"
                       value={pStock}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => {
@@ -5653,17 +5775,17 @@ export const AdminPanel: React.FC = () => {
                           setPStock(cleaned);
                         }
                       }}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Ціна (грн) *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">Ціна (грн)</label>
                     <input
                       type="number"
-                      required
-                      step="0.1"
+                      step="any"
                       min="0"
+                      placeholder="0.00"
                       value={pPrice}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => {
@@ -5675,7 +5797,7 @@ export const AdminPanel: React.FC = () => {
                           setPPrice(cleaned);
                         }
                       }}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs"
                     />
                   </div>
 
@@ -5714,6 +5836,23 @@ export const AdminPanel: React.FC = () => {
                       >
                         <Upload className="w-3.5 h-3.5" />
                         <span>З комп'ютера (ПК)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProductImageTab('search');
+                          if (foundOnlineImages.length === 0 && (onlineImageQuery || pName)) {
+                            handleSearchOnlineImages(onlineImageQuery || pName);
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                          productImageTab === 'search'
+                            ? 'bg-white text-orange-600 shadow-xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        <span>Пошук в інтернеті</span>
                       </button>
                       <button
                         type="button"
@@ -5760,6 +5899,121 @@ export const AdminPanel: React.FC = () => {
                         <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center gap-2">
                           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                           <span>{productImageUploadError}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mode 2: Search online from internet */}
+                  {productImageTab === 'search' && (
+                    <div className="space-y-3">
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={onlineImageQuery}
+                            onChange={(e) => setOnlineImageQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSearchOnlineImages();
+                              }
+                            }}
+                            placeholder="Введіть назву товару або ключові слова..."
+                            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 outline-none focus:border-orange-500"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isSearchingOnlineImages}
+                          onClick={() => handleSearchOnlineImages()}
+                          className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                        >
+                          <Search className={`w-3.5 h-3.5 ${isSearchingOnlineImages ? 'animate-spin' : ''}`} />
+                          <span>{isSearchingOnlineImages ? 'Пошук...' : 'Знайти фото'}</span>
+                        </button>
+                      </div>
+
+                      {onlineImageError && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>{onlineImageError}</span>
+                        </div>
+                      )}
+
+                      {/* Results grid */}
+                      {isSearchingOnlineImages ? (
+                        <div className="py-8 flex flex-col items-center justify-center text-slate-400 gap-2">
+                          <RefreshCw className="w-6 h-6 animate-spin text-orange-600" />
+                          <span className="text-xs font-medium">Шукаємо якісні фото в інтернеті...</span>
+                        </div>
+                      ) : foundOnlineImages.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-slate-600">
+                              Знайдено варіантів ({foundOnlineImages.length}) • Оберіть фото:
+                            </span>
+                            <span className="text-[10px] text-slate-400">Натисніть на фото для вибору</span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-60 overflow-y-auto p-1">
+                            {foundOnlineImages.map((img, idx) => {
+                              const isSelected = pImage === img.url;
+                              return (
+                                <div
+                                  key={idx}
+                                  onClick={() => {
+                                    setPImage(img.url);
+                                    showToast('Фото успішно обрано!', 'success');
+                                  }}
+                                  className={`group relative rounded-xl border p-1.5 cursor-pointer transition-all flex flex-col items-center bg-white hover:shadow-md ${
+                                    isSelected
+                                      ? 'border-emerald-500 ring-2 ring-emerald-500/30 bg-emerald-50/20'
+                                      : 'border-slate-200 hover:border-orange-400'
+                                  }`}
+                                >
+                                  <div className="w-full h-24 rounded-lg bg-slate-50 overflow-hidden flex items-center justify-center p-1 relative">
+                                    <img
+                                      src={img.url}
+                                      alt={img.title}
+                                      className="w-full h-full object-contain group-hover:scale-105 transition-transform"
+                                      loading="lazy"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => {
+                                        const target = e.currentTarget as HTMLImageElement;
+                                        if (img.thumbnail && target.src !== img.thumbnail) {
+                                          target.src = img.thumbnail;
+                                        }
+                                      }}
+                                    />
+                                    {isSelected && (
+                                      <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                        <Check className="w-3 h-3 stroke-[3]" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="w-full mt-1.5 px-0.5 text-left">
+                                    <p className="text-[10px] font-semibold text-slate-800 line-clamp-1 leading-tight" title={img.title}>
+                                      {img.title}
+                                    </p>
+                                    <span className="text-[9px] text-slate-400 font-medium">
+                                      {img.source}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                          <p className="text-xs text-slate-600">
+                            Введіть запит або натисніть <b>«Знайти фото»</b>
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            Система знайде фото в каталогах, Wikimedia Commons та Wikipedia
+                          </p>
                         </div>
                       )}
                     </div>
@@ -5872,6 +6126,101 @@ export const AdminPanel: React.FC = () => {
         onImport={(importedItems) => batchSaveProducts(importedItems)}
         existingProducts={products}
       />
+
+      {/* AUTO IMAGE SEARCH MODAL */}
+      {showAutoImageModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center shadow-xs">
+                  <ImageIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Авто-підбір фото</h3>
+                  <p className="text-xs text-slate-500">Пошук картинок в інтернеті за назвою</p>
+                </div>
+              </div>
+              {!isAutoFindingImages && (
+                <button
+                  type="button"
+                  onClick={() => setShowAutoImageModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            <div className="bg-sky-50 border border-sky-200/80 rounded-2xl p-4 text-xs text-sky-950 space-y-2">
+              <div className="flex items-center justify-between font-bold">
+                <span>Товарів без фото:</span>
+                <span className="text-sky-700 font-mono text-sm bg-sky-200/70 px-2.5 py-0.5 rounded-lg">
+                  {products.filter(p => !p.image || p.image.trim() === '').length} шт.
+                </span>
+              </div>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                Система автоматично проаналізує назви товарів, знайде відповідні фотографії у відкритих базах (Wikimedia, Wikipedia, каталоги) та надійно збереже їх у базі магазину.
+              </p>
+            </div>
+
+            {isAutoFindingImages && autoImageProgress && (
+              <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span className="truncate max-w-[240px]">
+                    Шукаємо: <b>{autoImageProgress.name}</b>
+                  </span>
+                  <span className="font-mono text-sky-600 font-bold">
+                    {autoImageProgress.current} / {autoImageProgress.total}
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-sky-500 transition-all duration-300 rounded-full"
+                    style={{
+                      width: `${Math.round((autoImageProgress.current / autoImageProgress.total) * 100)}%`
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-center text-slate-400">
+                  Будь ласка, зачекайте — фотографії підбираються та зберігаються...
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isAutoFindingImages}
+                onClick={() => setShowAutoImageModal(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+              >
+                Скасувати
+              </button>
+              <button
+                type="button"
+                disabled={isAutoFindingImages}
+                onClick={async () => {
+                  setIsAutoFindingImages(true);
+                  try {
+                    await autoAssignProductImages(undefined, (cur, tot, name) => {
+                      setAutoImageProgress({ current: cur, total: tot, name });
+                    });
+                    setShowAutoImageModal(false);
+                  } finally {
+                    setIsAutoFindingImages(false);
+                    setAutoImageProgress(null);
+                  }
+                }}
+                className="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className="w-4 h-4 text-sky-200" />
+                <span>{isAutoFindingImages ? 'Обробка...' : 'Запустити авто-пошук'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
