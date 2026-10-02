@@ -163,6 +163,20 @@ export function cleanSearchQuery(rawName: string): string {
     .trim();
 }
 
+// Production cloud backend URL for external static hostings like GitHub Pages
+const CLOUD_API_BASE = 'https://ais-pre-6zl6cy3md7nka2qwlrffos-472272282956.europe-west2.run.app';
+
+export function getApiBaseUrl(): string {
+  if (typeof window === 'undefined') return '';
+  const host = window.location.hostname;
+  // If running locally, in dev container or on Cloud Run directly:
+  if (host === 'localhost' || host === '127.0.0.1' || host.includes('run.app')) {
+    return '';
+  }
+  // If running on GitHub Pages (twoiplay46.github.io) or any other static hosting:
+  return CLOUD_API_BASE;
+}
+
 /**
  * Search images online using Web Image Search engine with rich multi-provider fallbacks
  */
@@ -172,11 +186,12 @@ export async function searchImagesOnline(query: string, limit: number = 16): Pro
 
   const results: FoundImage[] = [];
   const seenUrls = new Set<string>();
+  const apiBase = getApiBaseUrl();
 
   // 1. First priority: Real Web Image Search via Backend API (/api/search-images)
   try {
-    const res = await fetch(`/api/search-images?q=${encodeURIComponent(cleaned)}&limit=${limit}`, {
-      signal: AbortSignal.timeout(6500)
+    const res = await fetch(`${apiBase}/api/search-images?q=${encodeURIComponent(cleaned)}&limit=${limit}`, {
+      signal: AbortSignal.timeout(7000)
     });
     if (res.ok) {
       const data = await res.json();
