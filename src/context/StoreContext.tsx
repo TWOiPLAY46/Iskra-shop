@@ -29,6 +29,9 @@ import {
   logoutAdminWithFirebaseAuth,
   subscribeToAuth,
   pushOrderToFirebase,
+  saveOrderDirectlyToDatabase,
+  deleteOrderDirectlyFromDatabase,
+  clearAllOrdersDirectlyFromDatabase,
   saveAdminPasswordToFirestore,
   saveClientDirectlyToDatabase,
   deleteClientFromDatabase,
@@ -629,11 +632,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const mergedCategories = normalizeCategoriesTree(cloudData.categoriesTree);
           setCategoriesTree(mergedCategories);
           
-          const cloudOrders = Array.isArray(cloudData.orders) 
-            ? cloudData.orders 
-            : (cloudData.orders && typeof cloudData.orders === 'object' ? Object.values(cloudData.orders) : null);
+          const rawCloudOrders = cloudData.ordersList || cloudData.orders;
+          const cloudOrders = Array.isArray(rawCloudOrders) 
+            ? rawCloudOrders 
+            : (rawCloudOrders && typeof rawCloudOrders === 'object' ? Object.values(rawCloudOrders) : null);
           if (cloudOrders) {
-            setOrders((cloudOrders as Order[]).filter((o: Order) => o && o.id !== 'ORD-948120' && o.phone !== '+380971234567'));
+            const cleanOrders = (cloudOrders as Order[])
+              .filter((o: Order) => o && o.id && o.id !== 'ORD-948120' && o.phone !== '+380971234567');
+            setOrders(cleanOrders);
+            localStorage.setItem('iskra_orders_react', JSON.stringify(cleanOrders));
           }
           if (cloudData.clients && typeof cloudData.clients === 'object') {
             const clean: Record<string, ClientData> = {};
@@ -700,11 +707,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
         if (data.categoriesTree && typeof data.categoriesTree === 'object') setCategoriesTree(normalizeCategoriesTree(data.categoriesTree));
         
-        const liveOrders = Array.isArray(data.orders) 
-          ? data.orders 
-          : (data.orders && typeof data.orders === 'object' ? Object.values(data.orders) : null);
-        if (liveOrders) {
-          setOrders((liveOrders as Order[]).filter((o: Order) => o && o.id !== 'ORD-948120' && o.phone !== '+380971234567'));
+        const rawLiveOrders = data.ordersList || data.orders;
+        const liveOrders = Array.isArray(rawLiveOrders) 
+          ? rawLiveOrders 
+          : (rawLiveOrders && typeof rawLiveOrders === 'object' ? Object.values(rawLiveOrders) : null);
+        if (liveOrders !== null && liveOrders !== undefined) {
+          const cleanOrders = (liveOrders as Order[])
+            .filter((o: Order) => o && o.id && o.id !== 'ORD-948120' && o.phone !== '+380971234567');
+          setOrders(cleanOrders);
+          localStorage.setItem('iskra_orders_react', JSON.stringify(cleanOrders));
         }
         if (data.clients && typeof data.clients === 'object') {
           const clean: Record<string, ClientData> = {};
@@ -797,7 +808,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setDbStatus('connected');
       if (data.products && Array.isArray(data.products)) setProducts(data.products);
       if (data.categoriesTree) setCategoriesTree(data.categoriesTree);
-      if (data.orders && Array.isArray(data.orders)) setOrders(data.orders);
+      const rawOrders = data.ordersList || data.orders;
+      const fetchedOrders = Array.isArray(rawOrders) 
+        ? rawOrders 
+        : (rawOrders && typeof rawOrders === 'object' ? Object.values(rawOrders) : null);
+      if (fetchedOrders) {
+        const cleanOrders = (fetchedOrders as Order[])
+          .filter((o: Order) => o && o.id && o.id !== 'ORD-948120' && o.phone !== '+380971234567');
+        setOrders(cleanOrders);
+        localStorage.setItem('iskra_orders_react', JSON.stringify(cleanOrders));
+      }
       if (data.clients) setClients(data.clients);
       if (data.reviews && Array.isArray(data.reviews)) setReviews(data.reviews);
       if (data.siteSettings) setSiteSettings((prev) => ({ ...prev, ...data.siteSettings }));
@@ -1068,7 +1088,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return o;
     });
     setOrders(next);
+    localStorage.setItem('iskra_orders_react', JSON.stringify(next));
     showToast(`Статус замовлення №${orderId} змінено на "${status}"`, 'info');
+    const targetOrder = next.find(o => o.id === orderId);
+    if (targetOrder) {
+      saveOrderDirectlyToDatabase(firebaseConfig, targetOrder).catch(() => {});
+    }
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
     }
@@ -1098,12 +1123,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return o;
     });
     setOrders(next);
+    localStorage.setItem('iskra_orders_react', JSON.stringify(next));
     showToast(
       trimmed 
         ? `ТТН збережено! Статус: «${cleanTtn === '59001790044492' ? 'Доставлено' : 'В дорозі'}»` 
         : `ТТН очищено для замовлення №${orderId}`, 
       'success'
     );
+    const targetOrder = next.find(o => o.id === orderId);
+    if (targetOrder) {
+      saveOrderDirectlyToDatabase(firebaseConfig, targetOrder).catch(() => {});
+    }
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
     }
@@ -1149,7 +1179,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return o;
     });
     setOrders(next);
+    localStorage.setItem('iskra_orders_react', JSON.stringify(next));
     showToast(`Замовлення №${orderId} оновлено`, 'success');
+    const targetOrder = next.find(o => o.id === orderId);
+    if (targetOrder) {
+      saveOrderDirectlyToDatabase(firebaseConfig, targetOrder).catch(() => {});
+    }
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
     }
@@ -1158,7 +1193,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const deleteOrder = (orderId: string) => {
     const next = orders.filter((o) => o.id !== orderId);
     setOrders(next);
-    showToast(`Замовлення видалено`, 'info');
+    localStorage.setItem('iskra_orders_react', JSON.stringify(next));
+    showToast(`Замовлення №${orderId} видалено`, 'info');
+    deleteOrderDirectlyFromDatabase(firebaseConfig, orderId).catch(() => {});
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { orders: next, lastSyncTimestamp: Date.now() });
     }
@@ -1166,7 +1203,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const clearAllOrders = () => {
     setOrders([]);
+    localStorage.setItem('iskra_orders_react', JSON.stringify([]));
     showToast('Усі замовлення очищено', 'info');
+    clearAllOrdersDirectlyFromDatabase(firebaseConfig).catch(() => {});
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { orders: [], lastSyncTimestamp: Date.now() });
     }

@@ -344,6 +344,13 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
       }
       if (storeData.orders !== undefined) {
         await set(ref(db, 'store/orders'), storeData.orders);
+        const ordersListMap: Record<string, Order> = {};
+        if (Array.isArray(storeData.orders)) {
+          storeData.orders.forEach((o: Order) => {
+            if (o && o.id) ordersListMap[o.id] = o;
+          });
+        }
+        await set(ref(db, 'store/ordersList'), ordersListMap);
       }
       if (storeData.reviews !== undefined) {
         await set(ref(db, 'store/reviews'), storeData.reviews);
@@ -413,6 +420,17 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(storeData.orders)
+        });
+        const ordersListMap: Record<string, Order> = {};
+        if (Array.isArray(storeData.orders)) {
+          storeData.orders.forEach((o: Order) => {
+            if (o && o.id) ordersListMap[o.id] = o;
+          });
+        }
+        await fetch(`${baseUrl}/store/ordersList.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ordersListMap)
         });
       }
       if (storeData.reviews !== undefined) {
@@ -610,12 +628,23 @@ export async function fetchStoreFromFirebase(config: FirebaseConnectionConfig): 
       const snapshot = await get(storeRef);
       if (snapshot.exists()) {
         const val = snapshot.val();
-        if (val && (val.products || val.siteSettings || val.orders || val.clients || val.categoriesTree || val.categoriesTreeJson)) {
+        if (val && (val.products || val.siteSettings || val.orders || val.ordersList || val.clients || val.categoriesTree || val.categoriesTreeJson)) {
           if (val.categoriesTreeJson) {
             try {
               val.categoriesTree = JSON.parse(val.categoriesTreeJson);
             } catch {}
           }
+          // Merge ordersList (keyed map) and orders (array/map)
+          const ordersMap = new Map<string, any>();
+          if (val.ordersList && typeof val.ordersList === 'object') {
+            Object.values(val.ordersList).forEach((o: any) => { if (o && o.id) ordersMap.set(o.id, o); });
+          }
+          if (val.orders) {
+            const arr = Array.isArray(val.orders) ? val.orders : Object.values(val.orders);
+            arr.forEach((o: any) => { if (o && o.id && !ordersMap.has(o.id)) ordersMap.set(o.id, o); });
+          }
+          val.orders = Array.from(ordersMap.values());
+          val.ordersList = Object.fromEntries(ordersMap.entries());
           return val;
         }
       }
@@ -630,12 +659,22 @@ export async function fetchStoreFromFirebase(config: FirebaseConnectionConfig): 
       const res = await fetch(`${config.databaseURL.replace(/\/+$/, '')}/store.json`);
       if (res.ok) {
         const json = await res.json();
-        if (json && (json.products || json.siteSettings || json.orders || json.clients || json.categoriesTree || json.categoriesTreeJson)) {
+        if (json && (json.products || json.siteSettings || json.orders || json.ordersList || json.clients || json.categoriesTree || json.categoriesTreeJson)) {
           if (json.categoriesTreeJson) {
             try {
               json.categoriesTree = JSON.parse(json.categoriesTreeJson);
             } catch {}
           }
+          const ordersMap = new Map<string, any>();
+          if (json.ordersList && typeof json.ordersList === 'object') {
+            Object.values(json.ordersList).forEach((o: any) => { if (o && o.id) ordersMap.set(o.id, o); });
+          }
+          if (json.orders) {
+            const arr = Array.isArray(json.orders) ? json.orders : Object.values(json.orders);
+            arr.forEach((o: any) => { if (o && o.id && !ordersMap.has(o.id)) ordersMap.set(o.id, o); });
+          }
+          json.orders = Array.from(ordersMap.values());
+          json.ordersList = Object.fromEntries(ordersMap.entries());
           return json;
         }
       }
@@ -982,6 +1021,17 @@ export function subscribeToStore(
               val.categoriesTree = JSON.parse(val.categoriesTreeJson);
             } catch {}
           }
+          // Merge ordersList and orders so listeners always get a unified list of orders
+          const ordersMap = new Map<string, any>();
+          if (val.ordersList && typeof val.ordersList === 'object') {
+            Object.values(val.ordersList).forEach((o: any) => { if (o && o.id) ordersMap.set(o.id, o); });
+          }
+          if (val.orders) {
+            const arr = Array.isArray(val.orders) ? val.orders : Object.values(val.orders);
+            arr.forEach((o: any) => { if (o && o.id && !ordersMap.has(o.id)) ordersMap.set(o.id, o); });
+          }
+          val.orders = Array.from(ordersMap.values());
+          val.ordersList = Object.fromEntries(ordersMap.entries());
           onData(val);
         }
       }
@@ -997,37 +1047,48 @@ export function subscribeToStore(
 }
 
 /**
- * Push single order directly to Firebase (Firestore and RTDB)
+ * Save or update single order directly to Firebase (Firestore and RTDB)
  */
-export async function pushOrderToFirebase(config: FirebaseConnectionConfig, order: Order): Promise<boolean> {
+export async function saveOrderDirectlyToDatabase(config: FirebaseConnectionConfig, order: Order): Promise<boolean> {
+  if (!order || !order.id) return false;
   let ok = false;
-  // RTDB first
+
+  // 1. RTDB SDK
   try {
     const db = getOrInitFirebase(config);
-    if (db && order.id) {
+    if (db) {
       await set(ref(db, `store/ordersList/${order.id}`), order);
+      await set(ref(db, `store/orders/${order.id}`), order);
       ok = true;
     }
   } catch (err) {
     console.warn("RTDB order write warning:", err);
   }
 
-  // REST fallback
-  if (!ok && config.databaseURL && order.id) {
+  // 2. RTDB REST fallback
+  if (config.databaseURL) {
     try {
-      const res = await fetch(`${config.databaseURL.replace(/\/+$/, '')}/store/ordersList/${order.id}.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(order)
-      });
-      if (res.ok) ok = true;
+      const baseUrl = config.databaseURL.replace(/\/+$/, '');
+      await Promise.all([
+        fetch(`${baseUrl}/store/ordersList/${order.id}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(order)
+        }),
+        fetch(`${baseUrl}/store/orders/${order.id}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(order)
+        })
+      ]);
+      ok = true;
     } catch {}
   }
 
-  // Firestore safe attempt
+  // 3. Firestore safe attempt
   try {
     const firestore = getOrInitFirestore(config);
-    if (firestore && order.id) {
+    if (firestore) {
       await setDoc(doc(firestore, 'orders', order.id), order, { merge: true });
       ok = true;
     }
@@ -1036,6 +1097,105 @@ export async function pushOrderToFirebase(config: FirebaseConnectionConfig, orde
   }
 
   return ok;
+}
+
+/**
+ * Delete single order from Firebase (Firestore and RTDB)
+ */
+export async function deleteOrderDirectlyFromDatabase(config: FirebaseConnectionConfig, orderId: string): Promise<boolean> {
+  if (!orderId) return false;
+  let ok = false;
+
+  // 1. RTDB SDK
+  try {
+    const db = getOrInitFirebase(config);
+    if (db) {
+      await set(ref(db, `store/ordersList/${orderId}`), null);
+      await set(ref(db, `store/orders/${orderId}`), null);
+      ok = true;
+    }
+  } catch (err) {
+    console.warn("RTDB order delete warning:", err);
+  }
+
+  // 2. RTDB REST fallback
+  if (config.databaseURL) {
+    try {
+      const baseUrl = config.databaseURL.replace(/\/+$/, '');
+      await Promise.all([
+        fetch(`${baseUrl}/store/ordersList/${orderId}.json`, { method: 'DELETE' }),
+        fetch(`${baseUrl}/store/orders/${orderId}.json`, { method: 'DELETE' })
+      ]);
+      ok = true;
+    } catch {}
+  }
+
+  // 3. Firestore safe attempt
+  try {
+    const firestore = getOrInitFirestore(config);
+    if (firestore) {
+      await deleteDoc(doc(firestore, 'orders', orderId));
+      ok = true;
+    }
+  } catch (err) {
+    console.warn("Firestore order delete warning:", err);
+  }
+
+  return ok;
+}
+
+/**
+ * Clear all orders from Firebase (Firestore and RTDB)
+ */
+export async function clearAllOrdersDirectlyFromDatabase(config: FirebaseConnectionConfig): Promise<boolean> {
+  let ok = false;
+
+  // 1. RTDB SDK
+  try {
+    const db = getOrInitFirebase(config);
+    if (db) {
+      await set(ref(db, 'store/ordersList'), null);
+      await set(ref(db, 'store/orders'), null);
+      ok = true;
+    }
+  } catch (err) {
+    console.warn("RTDB clear orders warning:", err);
+  }
+
+  // 2. RTDB REST fallback
+  if (config.databaseURL) {
+    try {
+      const baseUrl = config.databaseURL.replace(/\/+$/, '');
+      await Promise.all([
+        fetch(`${baseUrl}/store/ordersList.json`, { method: 'DELETE' }),
+        fetch(`${baseUrl}/store/orders.json`, { method: 'DELETE' })
+      ]);
+      ok = true;
+    } catch {}
+  }
+
+  // 3. Firestore safe attempt
+  try {
+    const firestore = getOrInitFirestore(config);
+    if (firestore) {
+      const snap = await getDocs(collection(firestore, 'orders'));
+      const batch = writeBatch(firestore);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      ok = true;
+    }
+  } catch (err) {
+    console.warn("Firestore clear orders warning:", err);
+  }
+
+  return ok;
+}
+
+/**
+ * Push single order directly to Firebase (Firestore and RTDB)
+ */
+export async function pushOrderToFirebase(config: FirebaseConnectionConfig, order: Order): Promise<boolean> {
+  return saveOrderDirectlyToDatabase(config, order);
 }
 
 /**

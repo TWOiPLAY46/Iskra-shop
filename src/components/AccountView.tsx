@@ -34,6 +34,7 @@ import {
   AlertCircle,
   HelpCircle,
   Lock,
+  Trash2,
   X
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types/store';
@@ -63,6 +64,7 @@ export const AccountView: React.FC = () => {
     setActiveView,
     updateOrderStatus,
     editOrder,
+    deleteOrder,
     showToast
   } = useStore();
 
@@ -71,9 +73,10 @@ export const AccountView: React.FC = () => {
   const [inputName, setInputName] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
 
-  // Online Payment and IBAN Requisites Modals
+  // Online Payment, IBAN, and Cancel Confirmation Modals
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const [ibanModalOrder, setIbanModalOrder] = useState<Order | null>(null);
+  const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Active view tab in account
@@ -1345,6 +1348,19 @@ export const AccountView: React.FC = () => {
                               <RotateCcw className="w-3.5 h-3.5" />
                               <span>Повторити замовлення</span>
                             </button>
+
+                            {/* Customer order cancellation (e.g. test orders or pending payment) */}
+                            {order.status !== 'Доставлено' && order.status !== 'Відправлено' && (
+                              <button
+                                type="button"
+                                onClick={() => setOrderToCancel(order)}
+                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                                title="Скасувати це замовлення"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                <span>Скасувати</span>
+                              </button>
+                            )}
                           </div>
 
                         </div>
@@ -1527,6 +1543,52 @@ export const AccountView: React.FC = () => {
                   </button>
                 </div>
 
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 8. Cancel Order Confirmation Modal */}
+        {orderToCancel && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Скасувати замовлення?
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    №{orderToCancel.id} · {orderToCancel.total.toFixed(2)} грн
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Ви впевнені, що бажаєте скасувати замовлення <b>№{orderToCancel.id}</b>? Його буде видалено з вашого списку замовлень і з бази даних магазину на всіх пристроях.
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setOrderToCancel(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Назад
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = orderToCancel.id;
+                    deleteOrder(id);
+                    setOrderToCancel(null);
+                    showToast(`Замовлення №${id} успішно скасовано`, 'info');
+                  }}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Так, скасувати</span>
+                </button>
               </div>
             </div>
           </div>
