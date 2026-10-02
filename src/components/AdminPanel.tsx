@@ -65,10 +65,12 @@ import {
   CreditCard,
   Banknote,
   FileText,
+  Building2,
   X
 } from 'lucide-react';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
+import { UkrSkladSyncModal } from './UkrSkladSyncModal';
 import { trackNovaPoshtaTTN, searchUkrposhtaOffices, UkrposhtaOffice } from '../services/deliveryService';
 import { sendTelegramAlert } from '../utils/telegramHelper';
 import { 
@@ -661,6 +663,7 @@ export const AdminPanel: React.FC = () => {
   // Product Add/Edit Modal
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isUkrSkladModalOpen, setIsUkrSkladModalOpen] = useState(false);
 
   // Form states for Product Modal
   const [pName, setPName] = useState('');
@@ -1879,6 +1882,37 @@ export const AdminPanel: React.FC = () => {
             </div>
           </form>
 
+          {/* UkrSklad Integration Hub */}
+          <div className="pt-6 border-t border-slate-200 space-y-3 bg-amber-50/50 p-5 rounded-2xl border border-amber-200/80">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shadow-xs">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <span>Синхронізація з програмою «УкрСклад» (ноутбук у магазині)</span>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-200 text-amber-950">
+                      CommerceML 2.0
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Імпортуйте нові товари, ціни та залишки з програми УкрСклад, або вивантажуйте замовлення клієнтів у форматі XML / CSV.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsUkrSkladModalOpen(true)}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer self-start sm:self-center shrink-0 border border-amber-600/30"
+              >
+                <Building2 className="w-4 h-4" />
+                <span>Відкрити модуль УкрСклад</span>
+              </button>
+            </div>
+          </div>
+
           {/* Backup & Restore Panel */}
           <div className="pt-6 border-t border-slate-200 space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
@@ -2643,6 +2677,16 @@ export const AdminPanel: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsUkrSkladModalOpen(true)}
+                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer border border-amber-600/30"
+                title="Синхронізація з програмою УкрСклад на ноутбуці"
+              >
+                <Building2 className="w-4 h-4 text-slate-950" />
+                <span>Синхронізація УкрСклад</span>
+              </button>
+
               <button
                 onClick={handleOpenAddProduct}
                 className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-orange-600/30"
@@ -5716,6 +5760,12 @@ export const AdminPanel: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* UKRSKLAD SYNC MODAL */}
+      <UkrSkladSyncModal
+        isOpen={isUkrSkladModalOpen}
+        onClose={() => setIsUkrSkladModalOpen(false)}
+      />
 
     </div>
   );
