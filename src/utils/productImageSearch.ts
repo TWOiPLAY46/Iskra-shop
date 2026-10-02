@@ -198,8 +198,8 @@ export async function searchImagesOnline(query: string, limit: number = 16): Pro
     console.warn('Backend image search request error:', err);
   }
 
-  // If we already found good images from web search, return them!
-  if (results.length >= 4) {
+  // If we found images from web search, return them immediately!
+  if (results.length > 0) {
     return results.slice(0, limit);
   }
 
