@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { 
   X, 
@@ -11,7 +11,8 @@ import {
   Check,
   CheckCircle2,
   Star,
-  ShieldCheck
+  ShieldCheck,
+  ZoomIn
 } from 'lucide-react';
 import { Product } from '../types/store';
 import { getProductBrand } from '../utils/brandHelper';
@@ -32,7 +33,28 @@ export const ProductDetailModal: React.FC = () => {
 
   const [qty, setQty] = useState(1);
   const [imgError, setImgError] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
   const [addedItemIds, setAddedItemIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setIsZoomed(false);
+    setImgError(false);
+    setQty(1);
+  }, [quickViewProduct?.id]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isZoomed) {
+          setIsZoomed(false);
+        } else if (quickViewProduct) {
+          setQuickViewProduct(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isZoomed, quickViewProduct, setQuickViewProduct]);
 
   const isOutOfStock = quickViewProduct ? quickViewProduct.stock <= 0 : false;
   const lowThreshold = siteSettings?.features?.lowStockThreshold ?? 3;
@@ -108,15 +130,33 @@ export const ProductDetailModal: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
               
               {/* Left: Product Image / Stylized Placeholder */}
-              <div className="aspect-[4/3] rounded-2xl bg-slate-50 border border-slate-200 p-4 flex items-center justify-center relative overflow-hidden group">
+              <div 
+                onClick={() => {
+                  if (!imgError && quickViewProduct.image && quickViewProduct.image.trim() !== '') {
+                    setIsZoomed(true);
+                  }
+                }}
+                className={`aspect-[4/3] rounded-2xl bg-slate-50 border border-slate-200 p-4 flex items-center justify-center relative overflow-hidden group select-none transition-all ${
+                  !imgError && quickViewProduct.image && quickViewProduct.image.trim() !== ''
+                    ? 'cursor-zoom-in hover:border-orange-400 hover:shadow-md'
+                    : ''
+                }`}
+                title={!imgError && quickViewProduct.image ? 'Натисніть для збільшення фото' : undefined}
+              >
                 {!imgError && quickViewProduct.image && quickViewProduct.image.trim() !== '' ? (
-                  <img
-                    src={getSafeImageUrl(quickViewProduct.image)}
-                    alt={quickViewProduct.name}
-                    onError={() => setImgError(true)}
-                    referrerPolicy="no-referrer"
-                    className="max-h-full max-w-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
-                  />
+                  <>
+                    <img
+                      src={getSafeImageUrl(quickViewProduct.image)}
+                      alt={quickViewProduct.name}
+                      onError={() => setImgError(true)}
+                      referrerPolicy="no-referrer"
+                      className="max-h-full max-w-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute bottom-2.5 right-2.5 bg-slate-900/75 hover:bg-slate-900 text-white px-2.5 py-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1.5 text-xs font-semibold backdrop-blur-xs shadow-md">
+                      <ZoomIn className="w-3.5 h-3.5" />
+                      <span>Збільшити фото</span>
+                    </div>
+                  </>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-400">
                     {isPlumbing ? (
@@ -339,6 +379,55 @@ export const ProductDetailModal: React.FC = () => {
 
         </div>
       </div>
+
+      {/* Fullscreen Image Zoom / Lightbox */}
+      {isZoomed && quickViewProduct && quickViewProduct.image && (
+        <div 
+          className="fixed inset-0 z-[70] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 select-none animate-in fade-in duration-200"
+          onClick={() => setIsZoomed(false)}
+        >
+          {/* Top Bar with Product Name & Close Button */}
+          <div 
+            className="w-full max-w-4xl flex items-center justify-between text-white pb-3 border-b border-white/10 mb-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="min-w-0 pr-4">
+              <h3 className="text-sm sm:text-base font-bold truncate text-white">
+                {quickViewProduct.name}
+              </h3>
+              <p className="text-xs text-slate-300 font-mono">
+                Артикул: {quickViewProduct.sku} {quickViewProduct.badge ? `• ${quickViewProduct.badge}` : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsZoomed(false)}
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 text-xs font-semibold"
+              title="Закрити (Esc)"
+            >
+              <X className="w-5 h-5" />
+              <span className="hidden sm:inline pr-1">Закрити (Esc)</span>
+            </button>
+          </div>
+
+          {/* Large Center Image */}
+          <div 
+            className="relative max-w-4xl w-full max-h-[75vh] sm:max-h-[82vh] flex items-center justify-center p-3 sm:p-5 rounded-3xl bg-white/10 border border-white/15 overflow-hidden cursor-zoom-out shadow-2xl backdrop-blur-sm"
+            onClick={() => setIsZoomed(false)}
+          >
+            <img
+              src={getSafeImageUrl(quickViewProduct.image)}
+              alt={quickViewProduct.name}
+              referrerPolicy="no-referrer"
+              className="max-w-full max-h-[70vh] sm:max-h-[76vh] object-contain rounded-2xl shadow-xl transition-transform"
+            />
+          </div>
+
+          <p className="text-xs text-white/70 mt-3 font-medium">
+            Натисніть на фото або клавішу Esc, щоб закрити перегляд
+          </p>
+        </div>
+      )}
     </div>
   );
 };

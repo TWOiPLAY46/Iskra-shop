@@ -14,6 +14,7 @@ export interface Product {
   desc: string;
   image: string;
   brand?: string;
+  barcode?: string;
   specs?: Record<string, string>;
 }
 

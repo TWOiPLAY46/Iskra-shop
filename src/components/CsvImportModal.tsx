@@ -33,6 +33,7 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
   const [rawText, setRawText] = useState<string>('');
   const [defaultStock, setDefaultStock] = useState<number>(10);
   const [setStockIfZero, setSetStockIfZero] = useState<boolean>(true);
+  const [roundPriceToInteger, setRoundPriceToInteger] = useState<boolean>(true);
   const [overwriteExisting, setOverwriteExisting] = useState<boolean>(true);
   const [defaultCategory, setDefaultCategory] = useState<string>('Світлодіодне освітлення');
   const [parsedResult, setParsedResult] = useState<ParsedCsvResult | null>(null);
@@ -55,6 +56,7 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
       reparse(text, {
         defaultStock,
         setStockIfZero,
+        roundPriceToInteger,
         overrideStockWithDefault: false,
         defaultCategory
       });
@@ -77,6 +79,20 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
       reparse(rawText, {
         defaultStock: newStock,
         setStockIfZero: ifZero,
+        roundPriceToInteger,
+        overrideStockWithDefault: false,
+        defaultCategory
+      });
+    }
+  };
+
+  const handleRoundPriceChange = (round: boolean) => {
+    setRoundPriceToInteger(round);
+    if (rawText) {
+      reparse(rawText, {
+        defaultStock,
+        setStockIfZero,
+        roundPriceToInteger: round,
         overrideStockWithDefault: false,
         defaultCategory
       });
@@ -234,6 +250,38 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
                   />
                   <span className="text-xs text-slate-500 font-bold">шт.</span>
                 </div>
+              </div>
+            </div>
+
+            {/* Smart Price & Rounding Settings */}
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                <Sparkles className="w-4 h-4 text-emerald-600" />
+                <span>Налаштування цін та заокруглення:</span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={roundPriceToInteger}
+                    onChange={(e) => handleRoundPriceChange(e.target.checked)}
+                    className="mt-0.5 rounded text-orange-600 focus:ring-orange-500"
+                  />
+                  <div>
+                    <span className="font-bold text-slate-800">
+                      Заокруглювати ціни до цілих гривень (напр. 65.50 грн → 66 грн)
+                    </span>
+                    <p className="text-[11px] text-slate-500">
+                      Автоматично видаляє копійки для красивого та зручного відображення на вітрині
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-600 flex items-center gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Автоматично використовується роздрібна ціна магазину (замість прихідної/собівартості)</span>
               </div>
             </div>
 

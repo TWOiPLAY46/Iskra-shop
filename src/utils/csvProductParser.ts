@@ -2,17 +2,19 @@
  * Smart CSV Product Parser for ISKRA store
  * Handles Ukrainian & English headers, multiple delimiters, dirty data,
  * supplier price lists, stock text statuses ('в наявності', '+', '>10'),
- * and units formatting.
+ * UkrSklad retail price detection, price rounding, and units formatting.
  */
 
 import { Product } from '../types/store';
 import { normalizeStorageUnit } from './unitFormatter';
 import { classifyProduct } from './categoryClassifier';
+import { getProductBrand } from './brandHelper';
 
 export interface CsvImportOptions {
   defaultStock?: number;
   overrideStockWithDefault?: boolean;
   setStockIfZero?: boolean;
+  roundPriceToInteger?: boolean; // Round prices to whole numbers (e.g. 65.50 -> 66 грн)
   defaultCategory?: string;
   defaultMainCategory?: string;
 }
@@ -29,6 +31,7 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
   const defaultStock = options?.defaultStock !== undefined ? options.defaultStock : 10;
   const setStockIfZero = options?.setStockIfZero !== false; // default true
   const overrideStockWithDefault = !!options?.overrideStockWithDefault;
+  const roundPriceToInteger = options?.roundPriceToInteger !== false; // default true (целые заокругленные цены)
   const defaultCategory = options?.defaultCategory || 'Електротовари';
   const defaultMainCategory = options?.defaultMainCategory || 'Електротовари';
 
@@ -99,6 +102,7 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
   let idIdx = -1;
   let nameIdx = -1;
   let skuIdx = -1;
+  let brandIdx = -1;
   let priceIdx = -1;
   let stockIdx = -1;
   let unitIdx = -1;
@@ -108,72 +112,88 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
   let imageIdx = -1;
 
   if (hasHeader) {
-    headerCols.forEach((col, idx) => {
-      // ID
-      if ((col === 'id' || col === 'код товару' || col === 'код') && idIdx === -1) {
-        idIdx = idx;
-      }
-      // SKU / Article
-      if ((col.includes('sku') || col.includes('арт') || col.includes('штрих') || col.includes('код_тов') || col.includes('артикул')) && skuIdx === -1) {
-        skuIdx = idx;
-      }
-      // Name / Title
-      if ((col.includes('name') || col.includes('назв') || col.includes('наймен') || col.includes('товар') || col.includes('номенклатура')) && nameIdx === -1) {
-        nameIdx = idx;
-      }
-      // Price
-      if ((col.includes('price') || col.includes('цін') || col.includes('цен') || col.includes('вартість') || col.includes('грн') || col.includes('стоимость')) && priceIdx === -1) {
-        priceIdx = idx;
-      }
-      // Stock / Quantity / Availability (Filter out false positives like "колір", "колекція", "комплектація", "мін. залишок", "резерв")
-      const isExcludedStock = col.includes('мін') || col.includes('min') || col.includes('резерв') || col.includes('паков') || col.includes('ящик') || col.includes('колір') || col.includes('колекц');
-      const isStockMatch = !isExcludedStock && (
-        col === 'к-ть' || col === 'к-сть' || col.includes('к-ть') || col.includes('к-сть') ||
-        col.includes('stock') || col.includes('залиш') || col.includes('остат') || 
-        col.includes('склад') || col.includes('наявн') || col.includes('доступн') || 
-        col.includes('qty') || col.includes('count') || col.includes('amount') || col.includes('баланс') ||
-        col.includes('кільк') || col.includes('кол-во') ||
-        (col.includes('кол') && !col.includes('колонк'))
-      );
+    // 1. Identify Name
+    nameIdx = headerCols.findIndex(col => 
+      col === 'повна назва товару' || col === 'назва товару' || col === 'назва' || col === 'name' || col === 'title' ||
+      col.includes('повна назва') || col.includes('назв') || col.includes('наймен') || col.includes('товар') || col.includes('номенклатура')
+    );
 
-      if (isStockMatch && stockIdx === -1) {
-        stockIdx = idx;
-      }
-      // Unit
-      if ((col.includes('unit') || col.includes('один') || col.includes('од.') || col.includes('ед.') || col.includes('од.вим') || col.includes('измер')) && unitIdx === -1) {
-        unitIdx = idx;
-      }
-      // Category
-      if ((col.includes('cat') || col.includes('катег') || col.includes('груп') || col.includes('розділ') || col.includes('вид')) && catIdx === -1) {
-        catIdx = idx;
-      }
-      // Badge / Promo
-      if ((col.includes('badge') || col.includes('бейдж') || col.includes('акція') || col.includes('мітка') || col.includes('хіт')) && badgeIdx === -1) {
-        badgeIdx = idx;
-      }
-      // Desc
-      if ((col.includes('desc') || col.includes('опис') || col.includes('приміт') || col.includes('характер')) && descIdx === -1) {
-        descIdx = idx;
-      }
-      // Image
-      if ((col.includes('imag') || col.includes('фото') || col.includes('зображ') || col.includes('картин') || col.includes('url')) && imageIdx === -1) {
-        imageIdx = idx;
-      }
+    // 2. Identify SKU / Code
+    skuIdx = headerCols.findIndex(col => 
+      col === 'код' || col === 'код товару' || col === 'sku' || col === 'артикул' || col === 'арт.' || col === 'арт' ||
+      col.includes('sku') || col.includes('арт') || col.includes('штрих') || col.includes('код_тов')
+    );
+
+    // 3. Identify Brand / Manufacturer
+    brandIdx = headerCols.findIndex(col => 
+      col === 'виробник' || col === 'бренд' || col === 'brand' || col === 'manufacturer' || col.includes('виробник') || col.includes('бренд')
+    );
+
+    // 4. Identify Retail / Store Price (CRITICAL: Prioritize "Розд. ціна" / "Ціна магазину" over "Ціна прих." and "Опт. ціна")
+    const isIncomingPrice = (col: string) => 
+      col.includes('прих') || col.includes('вхід') || col.includes('закуп') || col.includes('себестоим') || col.includes('собіварт') || col.includes('вход');
+    const isOptPrice = (col: string) => 
+      col.includes('опт') || col.includes('дилер');
+
+    // Primary search: explicit Retail / Store price
+    priceIdx = headerCols.findIndex(col => 
+      !isIncomingPrice(col) && !isOptPrice(col) && (
+        col === 'розд. ціна' || col === 'розд.ціна' || col === 'розд.ціна(грн)' || col === 'роздрібна ціна' ||
+        col.includes('розд') || col.includes('розниц') || col.includes('магазин') || col.includes('продаж') || col.includes('роздріб') ||
+        col === 'ціна' || col === 'цена' || col === 'price' || col === 'ціна 1(грн)' || col === 'ціна 1'
+      )
+    );
+
+    // Secondary search: any price column that is NOT incoming/wholesale
+    if (priceIdx === -1) {
+      priceIdx = headerCols.findIndex(col => 
+        !isIncomingPrice(col) && (col.includes('price') || col.includes('цін') || col.includes('цен') || col.includes('вартість') || col.includes('грн'))
+      );
+    }
+
+    // Tertiary search fallback
+    if (priceIdx === -1) {
+      priceIdx = headerCols.findIndex(col => 
+        col.includes('price') || col.includes('цін') || col.includes('цен') || col.includes('вартість') || col.includes('грн')
+      );
+    }
+
+    // 5. Identify Stock / Quantity
+    stockIdx = headerCols.findIndex(col => {
+      const isExcluded = col.includes('мін') || col.includes('min') || col.includes('резерв') || col.includes('паков') || col.includes('ящик') || col.includes('колір');
+      if (isExcluded) return false;
+      return col === 'к-ть' || col === 'к-сть' || col.includes('к-ть') || col.includes('к-сть') ||
+             col.includes('кільк') || col.includes('кол-во') || col.includes('stock') || col.includes('залиш') ||
+             col.includes('остат') || col.includes('наявн') || col.includes('qty');
     });
 
-    // If sku found but not name and vice versa
+    // 6. Unit
+    unitIdx = headerCols.findIndex(col => 
+      col === 'од.вим.' || col === 'од. вим.' || col === 'од.' || col === 'unit' || col.includes('од.вим') || col.includes('один') || col.includes('ед.')
+    );
+
+    // 7. Category
+    catIdx = headerCols.findIndex(col => 
+      col.includes('cat') || col.includes('катег') || col.includes('груп') || col.includes('розділ') || col.includes('вид')
+    );
+
+    // 8. Badge, Desc, Image
+    badgeIdx = headerCols.findIndex(col => col.includes('badge') || col.includes('бейдж') || col.includes('акція') || col.includes('мітка'));
+    descIdx = headerCols.findIndex(col => col.includes('desc') || col.includes('опис') || col.includes('приміт') || col.includes('характер'));
+    imageIdx = headerCols.findIndex(col => col.includes('imag') || col.includes('фото') || col.includes('зображ') || col.includes('url'));
+
     if (nameIdx === -1 && skuIdx !== 0) {
       nameIdx = 1;
     } else if (nameIdx === -1) {
       nameIdx = 0;
     }
   } else {
-    // Positional fallback for headless files
+    // Positional fallback for headless UkrSklad CSV
     skuIdx = 0;
     nameIdx = 1;
-    priceIdx = 2;
-    unitIdx = 3;
-    stockIdx = 4;
+    unitIdx = 2;
+    stockIdx = 3;
+    priceIdx = 7; // UkrSklad column 7 is retail price (Розд. ціна)
   }
 
   const parseStockValue = (raw: string | undefined): number => {
@@ -220,7 +240,8 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
     if (!raw) return 0;
     const cleanStr = String(raw).replace(/\s+/g, '').replace(',', '.').replace(/[^\d.]/g, '');
     const num = parseFloat(cleanStr);
-    return isNaN(num) ? 0 : Math.round(num * 100) / 100;
+    if (isNaN(num)) return 0;
+    return roundPriceToInteger ? Math.round(num) : Math.round(num * 100) / 100;
   };
 
   const parsedProducts: Product[] = [];
@@ -249,10 +270,12 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
     // ID
     let id = (idIdx >= 0 && cols[idIdx]) ? cols[idIdx].trim() : '';
     if (!id) {
-      // Use clean SKU-based ID or unique timestamp
       const safeSku = sku.replace(/[^a-zA-Z0-9_-]/g, '-');
       id = safeSku ? `prod-${safeSku}` : `prod-csv-${Date.now()}-${i}`;
     }
+
+    // Brand
+    let brand = (brandIdx >= 0 && cols[brandIdx]) ? cols[brandIdx].trim() : '';
 
     // Category & Subcategory classification
     let category = (catIdx >= 0 && cols[catIdx]) ? cols[catIdx].trim() : '';
@@ -277,10 +300,15 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
       }
     }
 
-    // Price & Stock robust heuristics for garbled headers (mojibake)
+    // Price extraction: Prioritize column 7 (Розд. ціна in UkrSklad) over column 5 (Ціна прих.)
     let price = priceIdx >= 0 ? parsePriceValue(cols[priceIdx]) : 0;
     if (price === 0) {
-      if (cols.length > 5 && cols[5] && !isNaN(parseFloat(cols[5].replace(',', '.')))) {
+      // In UkrSklad export format, column 7 is retail price (Розд. ціна), column 22 is retail грн
+      if (cols.length > 7 && cols[7] && !isNaN(parseFloat(cols[7].replace(',', '.')))) {
+        price = parsePriceValue(cols[7]);
+      } else if (cols.length > 22 && cols[22] && !isNaN(parseFloat(cols[22].replace(',', '.')))) {
+        price = parsePriceValue(cols[22]);
+      } else if (cols.length > 5 && cols[5] && !isNaN(parseFloat(cols[5].replace(',', '.')))) {
         price = parsePriceValue(cols[5]);
       } else {
         const pCol = cols.find((c, idx) => idx > 2 && c && !isNaN(parseFloat(c.replace(',', '.'))) && parseFloat(c.replace(',', '.')) >= 1);
@@ -288,6 +316,7 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
       }
     }
 
+    // Stock extraction
     let stock = stockIdx >= 0 ? parseStockValue(cols[stockIdx]) : NaN;
     if (isNaN(stock)) {
       if (cols.length > 3 && cols[3] && !isNaN(parseFloat(cols[3].replace(',', '.')))) {
@@ -312,7 +341,7 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
     const desc = descIdx >= 0 && cols[descIdx] ? cols[descIdx].trim() : '';
     const image = imageIdx >= 0 && cols[imageIdx] ? cols[imageIdx].trim() : '';
 
-    parsedProducts.push({
+    const tempProduct: Product = {
       id,
       name,
       category,
@@ -324,8 +353,19 @@ export function parseProductCSV(csvText: string, options?: CsvImportOptions): Pa
       price,
       unit,
       desc,
-      image
-    });
+      image,
+      brand: brand || undefined
+    };
+
+    // Auto-detect brand if not explicitly provided
+    if (!brand || brand.trim() === '') {
+      const detectedBrand = getProductBrand(tempProduct);
+      if (detectedBrand && detectedBrand !== 'Інші виробники') {
+        tempProduct.brand = detectedBrand;
+      }
+    }
+
+    parsedProducts.push(tempProduct);
   }
 
   return {

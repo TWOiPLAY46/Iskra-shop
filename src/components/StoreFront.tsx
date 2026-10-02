@@ -5,7 +5,7 @@ import { ProductCard } from './ProductCard';
 import { WeeklyDealSection } from './WeeklyDealSection';
 import { ProductFilters } from './ProductFilters';
 import { SubcategoryDirectory } from './SubcategoryDirectory';
-import { getProductBrand } from '../utils/brandHelper';
+import { getProductBrand, matchProductSearch } from '../utils/brandHelper';
 import { 
   Flame, 
   ArrowUpDown, 
@@ -68,17 +68,9 @@ export const StoreFront: React.FC = () => {
     if (showWishlistOnly) {
       list = list.filter((p) => p?.id && wishlist.includes(p.id));
     } else {
-      // Filter by Search Query from Header
+      // Filter by Search Query from Header (supports multi-word, brand, manufacturer, specs, sku)
       if (searchQuery && searchQuery.trim() !== '') {
-        const q = searchQuery.toLowerCase().trim();
-        list = list.filter((p) => 
-          p.name.toLowerCase().includes(q) || 
-          p.sku.toLowerCase().includes(q) || 
-          p.category.toLowerCase().includes(q) ||
-          (p.mainCategory && p.mainCategory.toLowerCase().includes(q)) ||
-          (p.subCategory && p.subCategory.toLowerCase().includes(q)) ||
-          (p.brand && p.brand.toLowerCase().includes(q))
-        );
+        list = list.filter((p) => matchProductSearch(p, searchQuery));
       }
 
       // Filter by Category from Header Catalog

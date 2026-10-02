@@ -91,13 +91,25 @@ export function parseUkrSkladCSV(csvText: string): UkrSkladParsedData {
              h.includes('наличи') || h.includes('stock') || h.includes('qty');
     });
 
-    // Prioritize retail / selling price over purchase/incoming price
+    // Prioritize retail / store selling price over purchase/incoming price
+    const isIncomingPrice = (h: string) => h.includes('прих') || h.includes('вхід') || h.includes('закуп') || h.includes('себестоим') || h.includes('собіварт') || h.includes('вход');
+    const isOptPrice = (h: string) => h.includes('опт') || h.includes('дилер');
+
     let priceIdx = firstRowCols.findIndex(h => 
-      h.includes('прод') || h.includes('роздріб') || h.includes('розниц') || h.includes('продаж') || h.includes('видач') || h === 'ціна' || h === 'цена'
+      !isIncomingPrice(h) && !isOptPrice(h) && (
+        h === 'розд. ціна' || h === 'розд.ціна' || h === 'розд.ціна(грн)' || h === 'роздрібна ціна' ||
+        h.includes('розд') || h.includes('розниц') || h.includes('магазин') || h.includes('продаж') || 
+        h.includes('роздріб') || h.includes('видач') || h === 'ціна' || h === 'цена' || h === 'ціна 1(грн)' || h === 'ціна 1'
+      )
     );
     if (priceIdx === -1) {
       priceIdx = firstRowCols.findIndex(h => 
-        (h.includes('цен') || h.includes('цін') || h.includes('грн') || h.includes('вартість')) && !h.includes('опт')
+        !isIncomingPrice(h) && (h.includes('цен') || h.includes('цін') || h.includes('грн') || h.includes('вартість'))
+      );
+    }
+    if (priceIdx === -1) {
+      priceIdx = firstRowCols.findIndex(h => 
+        h.includes('цен') || h.includes('цін') || h.includes('грн') || h.includes('вартість')
       );
     }
 
@@ -158,14 +170,22 @@ export function parseUkrSkladCSV(csvText: string): UkrSkladParsedData {
       let price = 100;
       if (priceIdx >= 0 && cols[priceIdx]) {
         const pNum = parseFloat(cols[priceIdx].replace(',', '.'));
-        if (!isNaN(pNum) && pNum > 0) price = pNum;
+        if (!isNaN(pNum) && pNum > 0) price = Math.round(pNum);
+      } else if (cols.length >= 8 && cols[7] && !isNaN(parseFloat(cols[7].replace(',', '.')))) {
+        // In UkrSklad, column 7 is retail price (Розд. ціна)
+        const pVal = parseFloat(cols[7].replace(',', '.'));
+        if (pVal > 0) price = Math.round(pVal);
+      } else if (cols.length >= 23 && cols[22] && !isNaN(parseFloat(cols[22].replace(',', '.')))) {
+        // Column 22 is Розд.ціна(грн)
+        const pVal = parseFloat(cols[22].replace(',', '.'));
+        if (pVal > 0) price = Math.round(pVal);
       } else if (cols.length >= 6 && cols[5] && !isNaN(parseFloat(cols[5].replace(',', '.')))) {
         const pVal = parseFloat(cols[5].replace(',', '.'));
-        if (pVal > 0) price = pVal;
+        if (pVal > 0) price = Math.round(pVal);
       } else if (numericCols.length > 1) {
-        price = numericCols[1].value;
+        price = Math.round(numericCols[1].value);
       } else if (numericCols.length === 1) {
-        price = numericCols[0].value;
+        price = Math.round(numericCols[0].value);
       }
 
       const rawUnit = (cols[2] && cols[2].length <= 5) ? cols[2] : (unitIdx >= 0 && cols[unitIdx] ? cols[unitIdx] : 'шт');
@@ -274,7 +294,7 @@ export function parseUkrSkladXML(xmlString: string): UkrSkladParsedData {
         const priceStr = el.querySelector('Цены > Цена > ЦенаЗаЕдиницу, price, Price, розница, Цена')?.textContent?.trim();
         if (priceStr) {
           const num = parseFloat(priceStr.replace(',', '.').replace(/[^\d.]/g, ''));
-          if (!isNaN(num) && num > 0) price = num;
+          if (!isNaN(num) && num > 0) price = Math.round(num);
         }
 
         let stock = 10;

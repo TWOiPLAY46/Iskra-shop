@@ -49,11 +49,14 @@ const CATEGORY_DIRECTORY_DATA: Record<string, SubcategoryCardMeta[]> = {
         "Світлодіодні LED стрічки"
       ],
       brands: [
+        "VELMAX",
+        "Videx",
         "Philips",
         "Osram",
+        "Horoz Electric",
         "Eurolamp",
+        "Biom",
         "Maxus",
-        "Videx",
         "Feron"
       ],
       badge: "Топ продажів"

@@ -43,6 +43,7 @@ import {
   verifySecureSession 
 } from '../services/adminSecurityService';
 import { formatUnit, normalizeStorageUnit } from '../utils/unitFormatter';
+import { getProductBrand } from '../utils/brandHelper';
 import { parseProductCSV, CsvImportOptions } from '../utils/csvProductParser';
 import { classifyProduct } from '../utils/categoryClassifier';
 import { autoFindBestImageForProduct } from '../utils/productImageSearch';
@@ -111,6 +112,7 @@ interface StoreContextType {
   updateProductStock: (productId: string, newStock: number) => void;
   updateProductPrice: (productId: string, newPrice: number) => void;
   bulkAdjustPrices: (percentDelta: number) => void;
+  roundAllPricesToIntegers: (targetProductIds?: string[]) => void;
   bulkAdjustStock: (newStockForAll: number) => void;
   bulkAdjustZeroStock: (newStockForZeroItems: number) => void;
   batchUpdateSelectedProducts: (ids: string[], updates: { price?: number; stock?: number }) => void;
@@ -545,6 +547,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Sync to localStorage
   useEffect(() => {
+    localStorage.setItem('iskra_products_react_v4', JSON.stringify(products));
     localStorage.setItem('iskra_products_react', JSON.stringify(products));
   }, [products]);
 
@@ -1272,10 +1275,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const itemsToPrepend: Product[] = [];
 
     items.forEach((item, i) => {
-      const sanitized: Product = {
+      const rawBrand = item.brand ? item.brand.trim() : undefined;
+      const preliminary: Product = {
         id: item.id && item.id.trim() !== '' ? item.id.trim() : `iskra-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
         name: item.name ? item.name.trim() : 'Товар без назви',
-        brand: item.brand ? item.brand.trim() : undefined,
+        brand: rawBrand,
         sku: item.sku ? item.sku.trim() : `SKU-${Date.now()}-${i}`,
         price: typeof item.price === 'number' && !isNaN(item.price) ? item.price : parseFloat(String(item.price)) || 0,
         stock: typeof item.stock === 'number' && !isNaN(item.stock) ? item.stock : parseInt(String(item.stock)) || 0,
@@ -1287,6 +1291,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         image: item.image || '',
         badge: item.badge || ''
       };
+
+      const detected = getProductBrand(preliminary);
+      const effectiveBrand = rawBrand || (detected !== 'Інші виробники' ? detected : undefined);
+      const sanitized: Product = { ...preliminary, brand: effectiveBrand };
 
       const cleanSku = sanitized.sku.toLowerCase().trim();
       const cleanName = sanitized.name.toLowerCase().trim();
@@ -1433,13 +1441,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const factor = 1 + (percentDelta / 100);
     const next = products.map((p) => ({
       ...p,
-      price: Math.max(1, Math.round(p.price * factor * 10) / 10)
+      price: Math.max(1, Math.round(p.price * factor))
     }));
     setProducts(next);
     localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
-    showToast(`Ціни всіх товарів змінено на ${percentDelta > 0 ? '+' : ''}${percentDelta}%`, 'success');
+    showToast(`Ціни всіх товарів змінено на ${percentDelta > 0 ? '+' : ''}${percentDelta}% та заокруглено`, 'success');
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+    }
+  };
+
+  const roundAllPricesToIntegers = (targetProductIds?: string[]) => {
+    const idSet = targetProductIds && targetProductIds.length > 0 ? new Set(targetProductIds) : null;
+    let changedCount = 0;
+    const next = products.map((p) => {
+      if (!idSet || idSet.has(p.id)) {
+        const roundedPrice = Math.max(1, Math.round(p.price));
+        if (roundedPrice !== p.price) {
+          changedCount++;
+          return { ...p, price: roundedPrice };
+        }
+      }
+      return p;
+    });
+
+    if (changedCount > 0) {
+      setProducts(next);
+      localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
+      showToast(`Заокруглено ціни для ${changedCount} товарів до цілих гривень`, 'success');
+      if (firebaseConfig.enabled) {
+        pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+      }
+    } else {
+      showToast('Всі обрані ціни вже є цілими числами', 'info');
     }
   };
 
@@ -1532,11 +1566,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const next = products.map((p) => {
       if (!idSet || idSet.has(p.id)) {
         const classified = classifyProduct(p.name, p.sku);
-        if (
+        const detectedBrand = getProductBrand(p);
+        const shouldUpdateBrand = (!p.brand || p.brand.trim() === '' || p.brand === 'Інші виробники') && detectedBrand !== 'Інші виробники';
+        const brandToSet = shouldUpdateBrand ? detectedBrand : p.brand;
+
+        const isCategoryDifferent = 
           p.mainCategory !== classified.mainCategory ||
           p.subCategory !== classified.subCategory ||
-          p.category !== classified.category
-        ) {
+          p.category !== classified.category;
+
+        if (isCategoryDifferent || shouldUpdateBrand) {
           updatedCount++;
           const { mainCategory, subCategory, category } = classified;
           if (!updatedTree[mainCategory]) {
@@ -1559,7 +1598,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ...p,
             mainCategory: classified.mainCategory,
             subCategory: classified.subCategory,
-            category: classified.category
+            category: classified.category,
+            brand: brandToSet
           };
         }
       }
@@ -2056,6 +2096,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateProductStock,
         updateProductPrice,
         bulkAdjustPrices,
+        roundAllPricesToIntegers,
         bulkAdjustStock,
         bulkAdjustZeroStock,
         batchUpdateSelectedProducts,
