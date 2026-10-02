@@ -769,34 +769,55 @@ export const AdminPanel: React.FC = () => {
   // Handler for pasting image from clipboard (Ctrl+V)
   const handlePasteFromClipboard = async () => {
     try {
-      if (!navigator.clipboard) {
-        showToast('Скопіюйте фото та натисніть Ctrl+V', 'info');
-        return;
-      }
-      if (navigator.clipboard.read) {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          for (const type of item.types) {
-            if (type.startsWith('image/')) {
-              const blob = await item.getType(type);
-              const file = new File([blob], 'pasted-image.png', { type });
-              const result = await optimizeImageFile(file, 1000, 1000, 0.85);
-              setPImage(result.dataUrl);
-              showToast(`Фото успішно вставлено з буфера (${result.sizeKb} КБ)!`, 'success');
-              return;
+      if (navigator.clipboard?.read) {
+        try {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            for (const type of item.types) {
+              if (type.startsWith('image/')) {
+                const blob = await item.getType(type);
+                const file = new File([blob], 'pasted-image.png', { type });
+                const result = await optimizeImageFile(file, 1000, 1000, 0.85);
+                setPImage(result.dataUrl);
+                showToast(`Фото успішно вставлено з буфера (${result.sizeKb} КБ)!`, 'success');
+                return;
+              }
             }
           }
+        } catch {
+          // ignore and fall through to readText
         }
       }
-      const text = await navigator.clipboard.readText();
-      if (text && (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('data:image/'))) {
-        setPImage(text.trim());
-        showToast('Посилання на фото успішно вставлено!', 'success');
+
+      if (navigator.clipboard?.readText) {
+        try {
+          const text = await navigator.clipboard.readText();
+          const cleanText = text?.trim();
+          if (cleanText && (cleanText.startsWith('http://') || cleanText.startsWith('https://') || cleanText.startsWith('data:image/'))) {
+            setPImage(cleanText);
+            showToast('Посилання на фото успішно вставлено!', 'success');
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // If clipboard API failed, prompt user directly!
+      const manualUrl = window.prompt('Вставте скопійовану адресу зображення або посилання (натисніть Ctrl+V):');
+      if (manualUrl?.trim()) {
+        setPImage(manualUrl.trim());
+        showToast('Фото успішно додано!', 'success');
         return;
       }
-      showToast('Скопіюйте фото в Google чи іншому сайті та натисніть Ctrl+V', 'info');
+
+      showToast('Скопіюйте фото в Google чи Prom і натисніть Ctrl+V', 'info');
     } catch {
-      showToast('Натисніть клавіші Ctrl + V у вікні товару для вставки фото', 'info');
+      const manualUrl = window.prompt('Вставте посилання на зображення (натисніть Ctrl+V):');
+      if (manualUrl?.trim()) {
+        setPImage(manualUrl.trim());
+        showToast('Фото успішно додано!', 'success');
+      }
     }
   };
 
@@ -6024,8 +6045,11 @@ export const AdminPanel: React.FC = () => {
                         </button>
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] bg-slate-100/70 border border-slate-200 px-3 py-1.5 rounded-lg text-slate-600">
-                        <span>💡 <b>Підказка:</b> відкрийте Google або Prom, натисніть правою кнопкою «Копіювати зображення» і натисніть «Вставити (Ctrl+V)»</span>
+                      <div className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-amber-900 font-medium">
+                        <span className="text-base shrink-0">💡</span>
+                        <span>
+                          <b>Як додати точне фото за 2 секунди:</b> відкрийте товар у Google або Prom, натисніть на картинці правою кнопкою <b>«Копіювати зображення»</b> і натисніть тут жовту кнопку <b>«Вставити (Ctrl+V)»</b>!
+                        </span>
                       </div>
 
                       {onlineImageError && (

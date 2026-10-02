@@ -15,11 +15,11 @@ export interface FoundImage {
 // Curated high-resolution electrical, plumbing & hardware goods stock library
 // Used for instant matching and robust offline/static fallbacks (especially on GitHub Pages)
 const CURATED_ELECTRICAL_IMAGES: { keywords: string[]; url: string; title: string }[] = [
-  // Lighting: ETRON, LED Panels, Downlights, Ceiling & Wall Fixtures
+  // Lighting: ETRON, NORTE, LED Panels, Downlights, Ceiling & Wall Fixtures
   {
-    keywords: ['etron', '1-edp', 'edp-605', 'світильник', 'круг', 'панель led', 'downlight', 'врізний', 'накладний світильник'],
-    url: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=600&q=80',
-    title: 'Світильник світлодіодний круглий LED 12W (ETRON)'
+    keywords: ['1-ndp', 'ndp-1604', '1-edp', 'edp-605', 'norte', 'etron', 'світильник світлодіодний', 'круг', 'панель led', 'downlight', 'врізний', 'круглий світильник'],
+    url: 'https://images.unsplash.com/photo-1565814329452-e1efa11c5b89?auto=format&fit=crop&w=600&q=80',
+    title: 'Світильник світлодіодний круглий LED врізний / накладний'
   },
   {
     keywords: ['люстра', 'підвіс', 'стельовий світильник', 'плафон', 'бра', 'настінний світильник'],
@@ -360,36 +360,6 @@ export async function searchImagesOnline(query: string, limit: number = 16): Pro
     }
   } catch {
     // skip on network glitch
-  }
-
-  // 4. Query Ukrainian Wikipedia for product articles if we still need more options
-  if (results.length < 4) {
-    try {
-      const wikiTerms = encodeURIComponent(cleaned.split(' ').slice(0, 2).join(' '));
-      const wikiUrl = `https://uk.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=${wikiTerms}&gsrlimit=4&prop=pageimages&piprop=thumbnail&pithumbsize=600`;
-
-      const resp = await fetch(wikiUrl, { signal: AbortSignal.timeout(2500) });
-      if (resp.ok) {
-        const data = await resp.json();
-        const pages = data?.query?.pages;
-        if (pages) {
-          Object.values(pages).forEach((page: any) => {
-            const thumbUrl = page.thumbnail?.source;
-            if (thumbUrl && !seenUrls.has(thumbUrl)) {
-              seenUrls.add(thumbUrl);
-              results.push({
-                url: thumbUrl,
-                thumbnail: thumbUrl,
-                title: page.title || 'Фото товару',
-                source: 'Wikipedia'
-              });
-            }
-          });
-        }
-      }
-    } catch {
-      // skip on network glitch
-    }
   }
 
   return results.slice(0, limit);
