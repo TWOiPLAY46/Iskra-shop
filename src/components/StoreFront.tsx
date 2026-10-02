@@ -24,7 +24,11 @@ import {
   Home,
   LayoutGrid,
   Layers,
-  ChevronRight
+  ChevronRight,
+  ArrowRight,
+  Sparkles,
+  Check,
+  Package
 } from 'lucide-react';
 
 export const StoreFront: React.FC = () => {
@@ -277,43 +281,86 @@ export const StoreFront: React.FC = () => {
 
         {/* Category Quick Navigation Cards */}
         {!showWishlistOnly && (
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base sm:text-lg font-black font-display text-slate-900 tracking-tight flex items-center gap-2">
-                <LayoutGrid className="w-4 h-4 text-red-600" />
-                <span>Основні категорії каталогу</span>
-              </h2>
+          <section className="bg-white rounded-3xl p-5 sm:p-7 border border-slate-200/90 shadow-sm space-y-4 sm:space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-red-600 text-white rounded-xl shadow-xs">
+                    <LayoutGrid className="w-4 h-4" />
+                  </span>
+                  <h2 className="text-lg sm:text-xl font-black font-display text-slate-950 tracking-tight">
+                    Основні категорії каталогу
+                  </h2>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 hidden sm:inline-block">
+                    4 розділи
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Натисніть на категорію для швидкого перегляду підкатегорій з фото, схемами та виробниками
+                </p>
+              </div>
+
               {activeCategory !== 'Усі' && (
                 <button
-                  onClick={() => setActiveCategory('Усі')}
-                  className="text-xs font-bold text-red-600 hover:text-red-700 underline cursor-pointer"
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory('Усі');
+                    setSelectedSubCategory(null);
+                    setSelectedLeafTag(null);
+                  }}
+                  className="self-start sm:self-center px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs flex items-center gap-1.5"
                 >
-                  Скинути (показати всі)
+                  <X className="w-3.5 h-3.5" />
+                  <span>Показати всі категорії</span>
                 </button>
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {Object.keys(categoriesTree).map((catName) => {
                 const isActive = activeCategory === catName;
                 const lower = catName.toLowerCase();
 
-                let icon = <Droplets className="w-5 h-5 text-blue-600" />;
-                let bgGradient = "from-blue-50/50 to-white";
-                let borderColor = "hover:border-blue-300";
+                let icon = <Droplets className="w-5 h-5 text-white" />;
+                let iconBg = "bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-md shadow-blue-500/30";
+                let cardBg = "bg-gradient-to-b from-blue-50/90 via-sky-50/40 to-white hover:from-blue-100/90 hover:to-white";
+                let borderColor = "border-blue-200/90 hover:border-blue-400 hover:ring-2 hover:ring-blue-400/20";
+                let topStripe = "bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-400";
+                let badgeBg = "bg-blue-100 text-blue-900 border-blue-200";
+                let subItems = "Змішувачі · Радіатори · Труби · Насоси";
+                let subCount = "4 підрозділи";
+                let Watermark = Droplets;
 
                 if (lower.includes('електр')) {
-                  icon = <Zap className="w-5 h-5 text-amber-500" />;
-                  bgGradient = "from-amber-50/50 to-white";
-                  borderColor = "hover:border-amber-300";
+                  icon = <Zap className="w-5 h-5 text-white" />;
+                  iconBg = "bg-gradient-to-tr from-amber-500 to-orange-500 shadow-md shadow-amber-500/30";
+                  cardBg = "bg-gradient-to-b from-amber-50/90 via-orange-50/40 to-white hover:from-amber-100/90 hover:to-white";
+                  borderColor = "border-amber-200/90 hover:border-amber-400 hover:ring-2 hover:ring-amber-400/20";
+                  topStripe = "bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400";
+                  badgeBg = "bg-amber-100 text-amber-950 border-amber-200";
+                  subItems = "Освітлення · Розетки · Автомати · Кабель";
+                  subCount = "6 підрозділів";
+                  Watermark = Zap;
                 } else if (lower.includes('інструмент')) {
-                  icon = <Wrench className="w-5 h-5 text-emerald-600" />;
-                  bgGradient = "from-emerald-50/50 to-white";
-                  borderColor = "hover:border-emerald-300";
+                  icon = <Wrench className="w-5 h-5 text-white" />;
+                  iconBg = "bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-md shadow-emerald-500/30";
+                  cardBg = "bg-gradient-to-b from-emerald-50/90 via-teal-50/40 to-white hover:from-emerald-100/90 hover:to-white";
+                  borderColor = "border-emerald-200/90 hover:border-emerald-400 hover:ring-2 hover:ring-emerald-400/20";
+                  topStripe = "bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-400";
+                  badgeBg = "bg-emerald-100 text-emerald-950 border-emerald-200";
+                  subItems = "Ручний інструмент · Дрилі · Оснастка";
+                  subCount = "3 підрозділи";
+                  Watermark = Wrench;
                 } else if (lower.includes('господар')) {
-                  icon = <Home className="w-5 h-5 text-indigo-600" />;
-                  bgGradient = "from-indigo-50/50 to-white";
-                  borderColor = "hover:border-indigo-300";
+                  icon = <Home className="w-5 h-5 text-white" />;
+                  iconBg = "bg-gradient-to-tr from-indigo-600 to-purple-500 shadow-md shadow-indigo-500/30";
+                  cardBg = "bg-gradient-to-b from-indigo-50/90 via-purple-50/40 to-white hover:from-indigo-100/90 hover:to-white";
+                  borderColor = "border-indigo-200/90 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-400/20";
+                  topStripe = "bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-400";
+                  badgeBg = "bg-indigo-100 text-indigo-950 border-indigo-200";
+                  subItems = "Замки · Дюбелі · Драбини · Інвентар";
+                  subCount = "2 підрозділи";
+                  Watermark = Home;
                 }
 
                 // Count items matching this category
@@ -325,6 +372,7 @@ export const StoreFront: React.FC = () => {
                 return (
                   <button
                     key={catName}
+                    type="button"
                     onClick={() => {
                       if (activeCategory === catName) {
                         setActiveCategory('Усі');
@@ -344,30 +392,73 @@ export const StoreFront: React.FC = () => {
                         }, 80);
                       }
                     }}
-                    className={`p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer relative overflow-hidden group shadow-2xs ${
+                    className={`rounded-2xl border text-left transition-all duration-300 cursor-pointer relative overflow-hidden group shadow-xs hover:shadow-lg flex flex-col justify-between ${
                       isActive 
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-red-500 scale-[1.02]' 
-                        : `bg-gradient-to-br ${bgGradient} text-slate-800 border-slate-200/90 ${borderColor} hover:shadow-md hover:-translate-y-0.5`
+                        ? 'bg-slate-950 text-white border-slate-900 shadow-xl ring-2 ring-red-500 scale-[1.02]' 
+                        : `${cardBg} text-slate-900 ${borderColor} hover:-translate-y-1`
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className={`p-2 rounded-xl transition-all ${
-                        isActive ? 'bg-white/10 text-white' : 'bg-white shadow-2xs group-hover:scale-110'
-                      }`}>
-                        {icon}
-                      </div>
-                      <span className={`text-[11px] font-bold font-mono px-2 py-0.5 rounded-full ${
-                        isActive ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {catCount} тов.
-                      </span>
-                    </div>
+                    {/* Top Vibrant Color Stripe */}
+                    <div className={`h-1.5 w-full ${isActive ? 'bg-gradient-to-r from-red-600 via-amber-500 to-red-500' : topStripe}`}></div>
 
-                    <h3 className={`font-bold text-xs sm:text-sm leading-snug line-clamp-2 ${
-                      isActive ? 'text-white font-black' : 'text-slate-900'
-                    }`}>
-                      {catName}
-                    </h3>
+                    {/* Watermark Icon */}
+                    <Watermark className={`w-28 h-28 -rotate-12 absolute -right-4 -bottom-6 pointer-events-none transition-all duration-300 ${
+                      isActive ? 'text-white/5' : 'text-slate-900/5 group-hover:scale-110 group-hover:text-slate-900/10'
+                    }`} />
+
+                    <div className="p-4 sm:p-5 relative z-10 flex flex-col justify-between h-full space-y-3">
+                      
+                      {/* Header Row: Icon + Count Badges */}
+                      <div className="flex items-center justify-between">
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                          isActive ? 'bg-red-600 shadow-lg shadow-red-600/30 scale-105 text-white' : `${iconBg} group-hover:scale-110`
+                        }`}>
+                          {icon}
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`text-[11px] font-black font-mono px-2.5 py-0.5 rounded-full border shadow-2xs ${
+                            isActive 
+                              ? 'bg-red-600 text-white border-red-500' 
+                              : `${badgeBg}`
+                          }`}>
+                            {catCount} товарів
+                          </span>
+                          <span className={`text-[10px] font-semibold ${
+                            isActive ? 'text-slate-400' : 'text-slate-500'
+                          }`}>
+                            {subCount}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Title & Preview Tags */}
+                      <div>
+                        <h3 className={`font-black text-base sm:text-lg leading-tight transition-colors ${
+                          isActive ? 'text-white' : 'text-slate-950 group-hover:text-red-600'
+                        }`}>
+                          {catName}
+                        </h3>
+                        <p className={`text-xs mt-1 font-medium line-clamp-1 ${
+                          isActive ? 'text-slate-300' : 'text-slate-600'
+                        }`}>
+                          {subItems}
+                        </p>
+                      </div>
+
+                      {/* Bottom CTA Row */}
+                      <div className={`pt-2.5 border-t flex items-center justify-between text-xs font-bold ${
+                        isActive 
+                          ? 'border-white/10 text-amber-400' 
+                          : 'border-slate-200/80 text-slate-700 group-hover:text-red-600'
+                      }`}>
+                        <span>{isActive ? '✓ Обрана категорія' : 'Відкрити підкатегорії'}</span>
+                        <ArrowRight className={`w-4 h-4 transition-transform duration-300 ${
+                          isActive ? 'text-amber-400' : 'text-slate-400 group-hover:translate-x-1 group-hover:text-red-600'
+                        }`} />
+                      </div>
+
+                    </div>
                   </button>
                 );
               })}
