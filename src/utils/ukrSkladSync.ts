@@ -78,20 +78,41 @@ export function parseUkrSkladCSV(csvText: string): UkrSkladParsedData {
 
     let codeIdx = firstRowCols.findIndex(h => h.includes('код') || h.includes('sku') || h.includes('арт'));
     let nameIdx = firstRowCols.findIndex(h => h.includes('назв') || h.includes('наймен') || h.includes('товар'));
-    let stockIdx = firstRowCols.findIndex(h => h.includes('кол') || h.includes('остаток') || h.includes('кіл') || h.includes('залиш'));
-    let priceIdx = firstRowCols.findIndex(h => h.includes('цен') || h.includes('цін') || h.includes('розниц') || h.includes('грн') || h.includes('вартість'));
+    
+    // Prioritize actual quantity ("К-ть", "Кількість", "Залишок") and exclude "Мін. залишок" / "В резерві"
+    let stockIdx = firstRowCols.findIndex(h => {
+      const isExcluded = h.includes('мін') || h.includes('min') || h.includes('резерв') || h.includes('упаков') || h.includes('ящик');
+      if (isExcluded) return false;
+      return h === 'к-ть' || h === 'к-сть' || h.includes('к-ть') || h.includes('к-сть') ||
+             h.includes('кільк') || h.includes('кіл-') || h.includes('кол-во') ||
+             (h.includes('залиш') && !h.includes('мін')) ||
+             (h.includes('остат') && !h.includes('мин')) ||
+             h.includes('наличи') || h.includes('stock') || h.includes('qty');
+    });
+
+    // Prioritize retail / selling price over purchase/incoming price
+    let priceIdx = firstRowCols.findIndex(h => 
+      h.includes('прод') || h.includes('роздріб') || h.includes('розниц') || h.includes('продаж') || h.includes('видач') || h === 'ціна' || h === 'цена'
+    );
+    if (priceIdx === -1) {
+      priceIdx = firstRowCols.findIndex(h => 
+        (h.includes('цен') || h.includes('цін') || h.includes('грн') || h.includes('вартість')) && !h.includes('опт')
+      );
+    }
+
     let unitIdx = firstRowCols.findIndex(h => h.includes('ед') || h.includes('од') || h.includes('один'));
-    let catIdx = firstRowCols.findIndex(h => h.includes('катег') || h.includes('груп'));
+    let catIdx = firstRowCols.findIndex(h => h.includes('катег') || h.includes('груп') || h.includes('розділ'));
 
     if (!hasHeader) {
       codeIdx = 0;
       nameIdx = 1;
-      stockIdx = 2;
-      priceIdx = 3;
-      unitIdx = 4;
+      unitIdx = 2;
+      stockIdx = 3;
+      priceIdx = 5;
     } else {
       if (nameIdx === -1) nameIdx = 1;
       if (codeIdx === -1) codeIdx = 0;
+      if (stockIdx === -1 && firstRowCols.length >= 4) stockIdx = 3;
     }
 
     const startLineIdx = hasHeader ? 1 : 0;
@@ -112,33 +133,41 @@ export function parseUkrSkladCSV(csvText: string): UkrSkladParsedData {
       let sku = (codeIdx >= 0 && cols[codeIdx]) ? cols[codeIdx] : `SKU-${i}`;
       if (sku === name && cols[0] && cols[0] !== name) sku = cols[0];
 
-      // Parse stock
-      let stock = 10;
-      if (stockIdx >= 0 && cols[stockIdx]) {
-        const num = parseFloat(cols[stockIdx].replace(',', '.').replace(/[^\d.-]/g, ''));
-        if (!isNaN(num)) stock = Math.round(num);
-      }
-
-      // Parse price
-      let price = 0;
-      if (priceIdx >= 0 && cols[priceIdx]) {
-        const num = parseFloat(cols[priceIdx].replace(',', '.').replace(/[^\d.]/g, ''));
-        if (!isNaN(num) && num > 0) price = num;
-      }
-      if (price === 0) {
-        for (let c = 0; c < cols.length; c++) {
-          if (c === nameIdx || c === codeIdx) continue;
-          const val = (cols[c] || '').replace(',', '.').replace(/[^\d.]/g, '');
-          const num = parseFloat(val);
-          if (!isNaN(num) && num > 0 && num < 1000000) {
-            price = num;
-            break;
-          }
+      // Parse stock and price robustly for UkrSklad CSV exports
+      const numericCols: { index: number; value: number; raw: string }[] = [];
+      for (let c = 0; c < cols.length; c++) {
+        if (c === nameIdx || c === codeIdx) continue;
+        const rawVal = (cols[c] || '').replace(',', '.').trim();
+        const num = parseFloat(rawVal);
+        if (!isNaN(num) && rawVal !== '' && !/[a-zA-Zа-яА-ЯіІїЇєЄґҐ]{2,}/.test(rawVal)) {
+          numericCols.push({ index: c, value: num, raw: rawVal });
         }
       }
-      if (price === 0) price = 100;
 
-      const rawUnit = unitIdx >= 0 && cols[unitIdx] ? cols[unitIdx] : 'шт';
+      let stock = 10;
+      if (stockIdx >= 0 && cols[stockIdx]) {
+        const sNum = parseFloat(cols[stockIdx].replace(',', '.'));
+        if (!isNaN(sNum)) stock = Math.round(sNum);
+      } else if (cols.length >= 4 && cols[3] && !isNaN(parseFloat(cols[3].replace(',', '.')))) {
+        stock = Math.round(parseFloat(cols[3].replace(',', '.')));
+      } else if (numericCols.length > 0) {
+        stock = Math.round(numericCols[0].value);
+      }
+
+      let price = 100;
+      if (priceIdx >= 0 && cols[priceIdx]) {
+        const pNum = parseFloat(cols[priceIdx].replace(',', '.'));
+        if (!isNaN(pNum) && pNum > 0) price = pNum;
+      } else if (cols.length >= 6 && cols[5] && !isNaN(parseFloat(cols[5].replace(',', '.')))) {
+        const pVal = parseFloat(cols[5].replace(',', '.'));
+        if (pVal > 0) price = pVal;
+      } else if (numericCols.length > 1) {
+        price = numericCols[1].value;
+      } else if (numericCols.length === 1) {
+        price = numericCols[0].value;
+      }
+
+      const rawUnit = (cols[2] && cols[2].length <= 5) ? cols[2] : (unitIdx >= 0 && cols[unitIdx] ? cols[unitIdx] : 'шт');
       const unit = normalizeStorageUnit(rawUnit);
 
       // Smart category mapping

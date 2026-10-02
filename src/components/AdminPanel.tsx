@@ -66,11 +66,13 @@ import {
   Banknote,
   FileText,
   Building2,
+  Boxes,
   X
 } from 'lucide-react';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
 import { UkrSkladSyncModal } from './UkrSkladSyncModal';
+import { CsvImportModal } from './CsvImportModal';
 import { formatUnit, formatPriceUnit, normalizeStorageUnit } from '../utils/unitFormatter';
 import { trackNovaPoshtaTTN, searchUkrposhtaOffices, UkrposhtaOffice } from '../services/deliveryService';
 import { sendTelegramAlert } from '../utils/telegramHelper';
@@ -559,12 +561,16 @@ export const AdminPanel: React.FC = () => {
     adminRegister,
     adminLogout,
     saveProduct,
+    batchSaveProducts,
     deleteProduct,
     clearAllProductPhotos,
     updateProductStock,
     updateProductPrice,
     bulkAdjustPrices,
     bulkAdjustStock,
+    bulkAdjustZeroStock,
+    batchUpdateSelectedProducts,
+    batchDeleteProducts,
     exportProductsCSV,
     importProductsCSV,
     resetDefaultCatalog,
@@ -660,11 +666,30 @@ export const AdminPanel: React.FC = () => {
 
   // Bulk price edit state
   const [bulkPercent, setBulkPercent] = useState<number>(5);
+  const [bulkStockValue, setBulkStockValue] = useState<number>(10);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [batchPriceInput, setBatchPriceInput] = useState<number | string>('');
+  const [batchStockInput, setBatchStockInput] = useState<number | string>('');
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
+
+  const filteredProducts = products.filter((p) => {
+    const matchQ = p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase());
+    const matchStock = 
+      productFilterStock === 'all' 
+        ? true 
+        : productFilterStock === 'in_stock' 
+        ? p.stock > 0 
+        : productFilterStock === 'low_stock' 
+        ? p.stock > 0 && p.stock <= lowStockThreshold 
+        : p.stock <= 0;
+    return matchQ && matchStock;
+  });
 
   // Product Add/Edit Modal
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isUkrSkladModalOpen, setIsUkrSkladModalOpen] = useState(false);
+  const [isCsvImportModalOpen, setIsCsvImportModalOpen] = useState(false);
 
   // Form states for Product Modal
   const [pName, setPName] = useState('');
@@ -2705,16 +2730,15 @@ export const AdminPanel: React.FC = () => {
                 <span>Експорт CSV</span>
               </button>
 
-              <label className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer">
-                <FileUp className="w-4 h-4" />
+              <button
+                type="button"
+                onClick={() => setIsCsvImportModalOpen(true)}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Розумний імпорт прайс-листа CSV з налаштуванням залишків"
+              >
+                <FileUp className="w-4 h-4 text-orange-600" />
                 <span>Імпорт CSV</span>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleCsvImport}
-                  className="hidden"
-                />
-              </label>
+              </button>
 
               {confirmClearPhotos ? (
                 <div className="flex items-center gap-2 animate-in fade-in bg-rose-50 p-2 rounded-xl border border-rose-300 shadow-sm">
@@ -2791,7 +2815,7 @@ export const AdminPanel: React.FC = () => {
                 type="number"
                 value={bulkPercent}
                 onChange={(e) => setBulkPercent(Number(e.target.value))}
-                className="w-16 px-2 py-1 border border-slate-300 rounded font-mono text-center"
+                className="w-16 px-2 py-1 border border-slate-300 rounded font-mono text-center bg-white"
               />
               <span className="text-slate-500">%</span>
             </div>
@@ -2815,10 +2839,141 @@ export const AdminPanel: React.FC = () => {
           </div>
 
           {/* Products Table */}
+          {/* Batch Selection Action Bar */}
+          {selectedProductIds.length > 0 && (
+            <div className="bg-slate-900 text-white rounded-2xl p-4 mb-4 shadow-xl flex flex-wrap items-center justify-between gap-4 sticky top-4 z-20 animate-in fade-in border border-slate-700">
+              <div className="flex items-center gap-3">
+                <span className="w-8 h-8 rounded-xl bg-orange-500 text-slate-950 font-black flex items-center justify-center text-xs shadow-sm">
+                  {selectedProductIds.length}
+                </span>
+                <div>
+                  <div className="text-xs font-bold text-white">Обрано товарів</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedProductIds([]);
+                      setShowBatchDeleteConfirm(false);
+                    }}
+                    className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+                  >
+                    Зняти виділення
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                {/* Set Stock */}
+                <div className="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+                  <span className="text-slate-300 font-semibold">Склад:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Кількість"
+                    value={batchStockInput}
+                    onChange={(e) => setBatchStockInput(e.target.value)}
+                    className="w-20 px-2 py-1 bg-slate-900 border border-slate-700 rounded text-white font-mono text-center outline-none focus:border-orange-500"
+                  />
+                  <span className="text-slate-400">шт</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const s = parseInt(String(batchStockInput), 10);
+                      if (!isNaN(s)) {
+                        batchUpdateSelectedProducts(selectedProductIds, { stock: s });
+                        setBatchStockInput('');
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded font-bold cursor-pointer transition-colors shadow-xs"
+                  >
+                    Призначити склад
+                  </button>
+                </div>
+
+                {/* Set Price */}
+                <div className="flex items-center gap-1.5 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+                  <span className="text-slate-300 font-semibold">Ціна:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Нова ціна"
+                    value={batchPriceInput}
+                    onChange={(e) => setBatchPriceInput(e.target.value)}
+                    className="w-24 px-2 py-1 bg-slate-900 border border-slate-700 rounded text-white font-mono text-center outline-none focus:border-orange-500"
+                  />
+                  <span className="text-slate-400">грн</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = parseFloat(String(batchPriceInput));
+                      if (!isNaN(p)) {
+                        batchUpdateSelectedProducts(selectedProductIds, { price: p });
+                        setBatchPriceInput('');
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold cursor-pointer transition-colors shadow-xs"
+                  >
+                    Призначити ціну
+                  </button>
+                </div>
+
+                {/* Delete Selected with Confirmation */}
+                {showBatchDeleteConfirm ? (
+                  <div className="flex items-center gap-2 bg-rose-950/90 px-3 py-1.5 rounded-xl border border-rose-500 animate-in fade-in">
+                    <span className="text-rose-200 text-xs font-bold">Точно видалити ({selectedProductIds.length})?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        batchDeleteProducts(selectedProductIds);
+                        setSelectedProductIds([]);
+                        setShowBatchDeleteConfirm(false);
+                      }}
+                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-xs cursor-pointer shadow-xs"
+                    >
+                      Так
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowBatchDeleteConfirm(false)}
+                      className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded text-xs cursor-pointer"
+                    >
+                      Ні
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchDeleteConfirm(true)}
+                    className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Видалити</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
+                  <th className="py-3 px-4 w-10">
+                    <input
+                      type="checkbox"
+                      checked={filteredProducts.length > 0 && filteredProducts.every(p => selectedProductIds.includes(p.id))}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        if (e.target.checked) {
+                          setSelectedProductIds(filteredProducts.map(p => p.id));
+                        } else {
+                          setSelectedProductIds([]);
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-orange-600 cursor-pointer"
+                    />
+                  </th>
                   <th className="py-3 px-4">Фото</th>
                   <th className="py-3 px-4">Назва / Категорія</th>
                   <th className="py-3 px-4">Артикул</th>
@@ -2828,22 +2983,25 @@ export const AdminPanel: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {products
-                  .filter((p) => {
-                    const matchQ = p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase());
-                    const matchStock = 
-                      productFilterStock === 'all' 
-                        ? true 
-                        : productFilterStock === 'in_stock' 
-                        ? p.stock > 0 
-                        : productFilterStock === 'low_stock' 
-                        ? p.stock > 0 && p.stock <= lowStockThreshold 
-                        : p.stock <= 0;
-                    return matchQ && matchStock;
-                  })
-                  .map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/70">
-                      <td className="py-2.5 px-4">
+                {filteredProducts.map((p) => (
+                  <tr key={p.id} className={`hover:bg-slate-50/70 ${selectedProductIds.includes(p.id) ? 'bg-orange-50/40' : ''}`}>
+                    <td className="py-2.5 px-4 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedProductIds.includes(p.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          if (e.target.checked) {
+                            setSelectedProductIds([...selectedProductIds, p.id]);
+                          } else {
+                            setSelectedProductIds(selectedProductIds.filter(id => id !== p.id));
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-orange-600 cursor-pointer"
+                      />
+                    </td>
+                    <td className="py-2.5 px-4">
                         {p.image && p.image.trim() !== '' ? (
                           <img
                             src={getSafeImageUrl(p.image)}
@@ -5766,6 +5924,14 @@ export const AdminPanel: React.FC = () => {
       <UkrSkladSyncModal
         isOpen={isUkrSkladModalOpen}
         onClose={() => setIsUkrSkladModalOpen(false)}
+      />
+
+      {/* CSV IMPORT MODAL */}
+      <CsvImportModal
+        isOpen={isCsvImportModalOpen}
+        onClose={() => setIsCsvImportModalOpen(false)}
+        onImport={(importedItems) => batchSaveProducts(importedItems)}
+        existingProducts={products}
       />
 
     </div>
