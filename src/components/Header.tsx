@@ -258,22 +258,26 @@ export const Header: React.FC = () => {
               {/* Shopping Cart Drawer Trigger (Red button with bag icon and sum) */}
               <button
                 onClick={() => setIsCartDrawerOpen(true)}
-                className="inline-flex items-center gap-1 sm:gap-1.5 bg-red-600 hover:bg-red-700 text-white px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1 sm:gap-1.5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
                 aria-label="Кошик покупок"
               >
-                <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white stroke-[1.8]" />
-                <span className="tabular-nums font-bold text-[10px] sm:text-xs">
+                <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white stroke-[2]" />
+                <span className="tabular-nums font-bold text-[11px] sm:text-xs">
                   {discountedCartSum.toFixed(0)} грн
                 </span>
               </button>
 
-              {/* Mobile menu trigger */}
+              {/* Mobile menu trigger (Three stripes / Burger) - enlarged and comfortable touch target */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="p-1 text-slate-700 hover:bg-slate-100 rounded-xl md:hidden cursor-pointer"
+                className="ml-2 sm:ml-3 p-2 text-slate-800 hover:text-black hover:bg-slate-100 active:bg-slate-200 rounded-xl md:hidden cursor-pointer flex items-center justify-center min-w-[42px] min-h-[42px] transition-colors"
                 aria-label="Меню сайту"
               >
-                {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                {isMobileMenuOpen ? (
+                  <X className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.3]" />
+                ) : (
+                  <Menu className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.3]" />
+                )}
               </button>
             </div>
 
