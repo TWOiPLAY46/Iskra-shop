@@ -117,11 +117,14 @@ async function startServer() {
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   const isProd = process.env.NODE_ENV === 'production';
 
-  // Global CORS headers: allow requests from GitHub Pages (twoiplay46.github.io) and all origins
+  // Security Headers Middleware
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+    res.header('X-Content-Type-Options', 'nosniff');
+    res.header('X-XSS-Protection', '1; mode=block');
+    res.header('Referrer-Policy', 'strict-origin-when-cross-origin');
     if (req.method === 'OPTIONS') {
       res.sendStatus(200);
       return;
@@ -129,7 +132,7 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json());
+  app.use(express.json({ limit: '5mb' }));
 
   // Health check
   app.get('/api/health', (_req: Request, res: Response) => {
@@ -139,9 +142,9 @@ async function startServer() {
   // Image search API
   app.get('/api/search-images', async (req: Request, res: Response) => {
     const rawQuery = (req.query.q as string) || '';
-    const limit = parseInt((req.query.limit as string) || '20', 10);
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '20', 10), 1), 50);
 
-    if (!rawQuery.trim()) {
+    if (!rawQuery.trim() || rawQuery.length > 200) {
       res.json({ results: [] });
       return;
     }
@@ -188,11 +191,45 @@ async function startServer() {
     }
   });
 
+  // Helper to validate safe external URLs (SSRF prevention)
+  function isSafeExternalUrl(inputUrl: string): boolean {
+    try {
+      const parsed = new URL(inputUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return false;
+      }
+      const hostname = parsed.hostname.toLowerCase();
+      // Block localhost, private IPs, loopback, metadata services
+      if (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '0.0.0.0' ||
+        hostname === '::1' ||
+        hostname === '169.254.169.254' ||
+        hostname.endsWith('.internal') ||
+        hostname.endsWith('.local') ||
+        /^10\.\d+\.\d+\.\d+$/.test(hostname) ||
+        /^192\.168\.\d+\.\d+$/.test(hostname) ||
+        /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(hostname)
+      ) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // Image proxy API
   app.get('/api/image-proxy', async (req: Request, res: Response) => {
     const targetUrl = req.query.url as string;
-    if (!targetUrl) {
-      res.status(400).send('Missing url param');
+    if (!targetUrl || typeof targetUrl !== 'string') {
+      res.status(400).send('Missing or invalid url param');
+      return;
+    }
+
+    if (!isSafeExternalUrl(targetUrl)) {
+      res.status(403).send('Forbidden: invalid or non-allowed target URL');
       return;
     }
 
@@ -210,8 +247,13 @@ async function startServer() {
         return;
       }
 
-      const contentType = fetchResp.headers.get('content-type') || 'image/jpeg';
+      const rawContentType = fetchResp.headers.get('content-type') || '';
+      // Ensure content type is a valid image or fallback to jpeg
+      const isImage = rawContentType.startsWith('image/') || rawContentType.includes('octet-stream');
+      const contentType = isImage ? rawContentType.split(';')[0] : 'image/jpeg';
+
       res.setHeader('Content-Type', contentType);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Cache-Control', 'public, max-age=86400');
       const arrayBuf = await fetchResp.arrayBuffer();
       res.send(Buffer.from(arrayBuf));

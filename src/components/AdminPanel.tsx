@@ -4825,25 +4825,40 @@ export const AdminPanel: React.FC = () => {
           <div className="space-y-4 text-xs">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Назва бейджа в шапці (лого)
+                Назва бренду (червоний бейдж)
               </label>
               <input
                 type="text"
                 value={designForm.logoBadge}
+                placeholder="ISKRA"
                 onChange={(e) => setDesignForm({ ...designForm, logoBadge: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
               />
             </div>
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Підпис біля логотипа
+                Основний підпис бренду (верхній рядок)
               </label>
               <input
                 type="text"
                 value={designForm.logoText}
+                placeholder="МАГАЗИН"
                 onChange={(e) => setDesignForm({ ...designForm, logoText: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Слоган / Підзаголовок (нижній рядок)
+              </label>
+              <input
+                type="text"
+                value={designForm.logoSubtitle || ''}
+                placeholder="Магазин надійних рішень"
+                onChange={(e) => setDesignForm({ ...designForm, logoSubtitle: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
               />
             </div>
 

@@ -718,8 +718,8 @@ export const initialProducts: Product[] = [
 ];
 
 export const initialSiteSettings: SiteSettings = {
-  phone: "+38 (097) 123-45-67",
-  viber: "+380971234567",
+  phone: "+38 (096) 647-36-67",
+  viber: "+380966473667",
   telegram: "iskra_store_orativ",
   callbackText: "Передзвоніть мені",
   botToken: "",
@@ -755,11 +755,12 @@ export const initialHeaderDesign: HeaderDesign = {
   bgColor: "#0f172a",
   logoBadge: "ISKRA",
   logoText: "МАГАЗИН",
+  logoSubtitle: "Магазин надійних рішень",
   promoActive: true,
   promoText: "⚡ Знижка 5% на перше замовлення при реєстрації в особистому кабінеті! Безкоштовна доставка від 3000 грн.",
-  heroBadge: "Офіційний дистриб'ютор",
+  heroBadge: "ІНТЕРНЕТ-МАГАЗИН",
   heroTitle: "Надійна Сантехніка та Електротовари",
-  heroDesc: "Комплексні рішення для монтажу, ремонту та будівництва. Сертифікована продукція перевірених європейських та українських брендів за гуртовими цінами.",
+  heroDesc: "Найбільший асортимент товарів для ремонту, монтажу та будівництва у вас вдома.",
   heroAddress: "вул. Героїв Майдану, 14",
   heroCity: "с. Оратів, Вінницька обл."
 };

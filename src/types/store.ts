@@ -134,6 +134,7 @@ export interface HeaderDesign {
   bgColor: string;
   logoBadge: string;
   logoText: string;
+  logoSubtitle?: string;
   promoActive: boolean;
   promoText: string;
   heroBadge: string;

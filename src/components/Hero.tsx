@@ -22,7 +22,7 @@ export const Hero: React.FC = () => {
 
   const heroBadge = !isGarbage(headerDesign.heroBadge)
     ? headerDesign.heroBadge
-    : "Інтернет-магазин";
+    : "ІНТЕРНЕТ-МАГАЗИН";
 
   const rawHeroCity = !isGarbage(headerDesign.heroCity)
     ? headerDesign.heroCity
@@ -66,7 +66,7 @@ export const Hero: React.FC = () => {
           {/* Description */}
           <p className="text-sm sm:text-base text-slate-300 leading-relaxed mb-8 max-w-xl">
             {headerDesign.heroDesc || 
-              "Повний асортимент комплектуючих для монтажу, сантехніки, опалення та електромереж. Швидка комплектація замовлень, перевірені бренди та чесні ціни."}
+              "Найбільший асортимент товарів для ремонту, монтажу та будівництва у вас вдома."}
           </p>
 
           {/* Action CTAs */}

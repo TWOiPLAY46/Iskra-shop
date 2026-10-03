@@ -35,6 +35,7 @@ import {
   HelpCircle,
   Lock,
   Trash2,
+  Edit3,
   X
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types/store';
@@ -56,6 +57,7 @@ export const AccountView: React.FC = () => {
     currentClientPhone, 
     loginClient, 
     logoutClient, 
+    saveClient,
     orders, 
     products,
     addToCart,
@@ -72,6 +74,35 @@ export const AccountView: React.FC = () => {
   const [inputPhone, setInputPhone] = useState('');
   const [inputName, setInputName] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  // Profile Edit modal states
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileCity, setProfileCity] = useState('');
+  const [profileNotes, setProfileNotes] = useState('');
+
+  const handleOpenEditProfile = () => {
+    setProfileName(currentClient?.name || '');
+    setProfileCity(currentClient?.city || '');
+    setProfileNotes(currentClient?.notes || '');
+    setIsEditProfileOpen(true);
+  };
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentClientPhone) return;
+    const cleanPhone = currentClientPhone.trim();
+    saveClient(cleanPhone, {
+      ...currentClient,
+      name: profileName.trim() || 'Покупець',
+      city: profileCity.trim(),
+      notes: profileNotes.trim(),
+      balance: currentClient?.balance || 0,
+      discount: currentClient?.discount || 0
+    });
+    setIsEditProfileOpen(false);
+    showToast('Профіль успішно оновлено та збережено в базі даних!', 'success');
+  };
 
   // Online Payment, IBAN, and Cancel Confirmation Modals
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
@@ -604,14 +635,22 @@ export const AccountView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Actions (Logout) */}
-                <div className="flex items-center gap-2.5">
+                {/* Actions (Edit Profile & Logout) */}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    onClick={handleOpenEditProfile}
+                    className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-orange-600 transition-colors shadow-2xs inline-flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                  >
+                    <Edit3 className="w-4 h-4 text-orange-600" />
+                    <span>Редагувати профіль</span>
+                  </button>
+
                   <button
                     onClick={logoutClient}
-                    className="px-4 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-xs font-bold text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-colors shadow-2xs inline-flex items-center gap-2 active:scale-95"
+                    className="px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-xs font-bold text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-colors shadow-2xs inline-flex items-center gap-1.5 active:scale-95 cursor-pointer"
                   >
                     <LogOut className="w-4 h-4" />
-                    <span>Вийти з кабінету</span>
+                    <span>Вийти</span>
                   </button>
                 </div>
 
@@ -1590,6 +1629,94 @@ export const AccountView: React.FC = () => {
                   <span>Так, скасувати</span>
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 9. Edit Profile Modal */}
+        {isEditProfileOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                    <Edit3 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Редагування профілю
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono">
+                      +{currentClientPhone}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditProfileOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Прізвище та ім'я (ПІБ) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="Олександр Петренко"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Місто / Населений пункт для доставки
+                  </label>
+                  <input
+                    type="text"
+                    value={profileCity}
+                    onChange={(e) => setProfileCity(e.target.value)}
+                    placeholder="с. Оратів, Вінницька обл."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Бажана адреса або коментар до замовлень
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={profileNotes}
+                    onChange={(e) => setProfileNotes(e.target.value)}
+                    placeholder="Відділення №1, доставка до дверей, тощо..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-xs"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditProfileOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors cursor-pointer"
+                  >
+                    Скасувати
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-xs transition-all cursor-pointer"
+                  >
+                    Зберегти зміни в БД
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

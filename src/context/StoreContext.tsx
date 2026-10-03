@@ -420,12 +420,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (heroCity.includes('смт. Оратів') || heroCity.includes('смт.')) {
       heroCity = heroCity.replace(/смт\.\s*Оратів/g, 'с. Оратів').replace(/смт\./g, 'с.');
     }
+    const logoBadge = (!d.logoBadge || isGarbage(d.logoBadge)) ? 'ISKRA' : d.logoBadge;
+    const logoText = (!d.logoText || isGarbage(d.logoText)) ? 'МАГАЗИН' : d.logoText;
+    const logoSubtitle = (!d.logoSubtitle || isGarbage(d.logoSubtitle)) ? 'Магазин надійних рішень' : d.logoSubtitle;
     return {
       ...initialHeaderDesign,
       ...d,
+      logoBadge,
+      logoText,
+      logoSubtitle,
       heroCity,
       heroAddress: isGarbage(d.heroAddress) ? "вул. Героїв Майдану, 14" : d.heroAddress,
-      heroBadge: isGarbage(d.heroBadge) ? "Інтернет-магазин" : d.heroBadge
+      heroBadge: isGarbage(d.heroBadge) ? "ІНТЕРНЕТ-МАГАЗИН" : d.heroBadge
     };
   };
 
@@ -1019,6 +1025,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Sync to Cloud if Firebase is active
     if (firebaseConfig.enabled) {
       pushOrderToFirebase(firebaseConfig, newOrder).catch(() => {});
+      saveClientDirectlyToDatabase(firebaseConfig, cleanPhone, nextClients[cleanPhone]).catch(() => {});
       pushStoreToFirebase(firebaseConfig, {
         products: nextProducts,
         categoriesTree,

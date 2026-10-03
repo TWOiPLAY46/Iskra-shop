@@ -3,7 +3,7 @@ import { useStore } from '../context/StoreContext';
 import { Phone, MapPin, Clock, ShieldCheck, Truck, Lock } from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const { siteSettings, setActiveView } = useStore();
+  const { siteSettings, headerDesign, setActiveView } = useStore();
 
   return (
     <footer id="contacts-section" className="bg-slate-950 text-slate-400 border-t border-slate-900 mt-20">
@@ -12,13 +12,20 @@ export const Footer: React.FC = () => {
           
           {/* Col 1: Store Brand & Story */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="bg-red-600 text-white font-black px-2.5 py-0.5 rounded-lg text-lg font-display shadow-xs">
-                ISKRA
-              </span>
-              <span className="text-sm font-bold tracking-wider uppercase text-white font-display">
-                Сантехніка та Електротовари
-              </span>
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center bg-[#e5001e] text-white px-2.5 py-1.5 rounded-[6px] text-sm font-black tracking-tight shrink-0 shadow-xs">
+                <span className="font-black text-white text-sm tracking-tight font-display leading-none transform scale-y-110 inline-block uppercase select-none">
+                  {headerDesign.logoBadge || 'ISKRA'}
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-sm text-white tracking-tight font-display leading-tight uppercase">
+                  {headerDesign.logoText || 'МАГАЗИН'}
+                </span>
+                <span className="text-[10px] font-medium text-slate-400 tracking-tight leading-tight">
+                  {headerDesign.logoSubtitle || 'Магазин надійних рішень'}
+                </span>
+              </div>
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
@@ -27,7 +34,7 @@ export const Footer: React.FC = () => {
 
             <div className="pt-2 text-xs space-y-1.5 text-slate-300">
               <div className="flex items-center gap-2">
-                <Truck className="w-4 h-4 text-red-500 shrink-0" />
+                <Truck className="w-4 h-4 text-orange-500 shrink-0" />
                 <span>Доставка по Україні перевізником «Нова Пошта»</span>
               </div>
               <div className="flex items-center gap-2">
