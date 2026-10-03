@@ -14,7 +14,7 @@ export const Footer: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-2.5">
               <div className="flex items-center justify-center bg-[#e5001e] text-white px-2.5 py-1.5 rounded-[6px] text-sm font-black tracking-tight shrink-0 shadow-xs">
-                <span className="font-black text-white text-sm tracking-[0.06em] font-display leading-none transform scale-y-110 scale-x-105 inline-block uppercase select-none">
+                <span className="font-black text-white text-[15.5px] tracking-[0.05em] font-display leading-none transform scale-y-110 scale-x-105 inline-block uppercase select-none">
                   {headerDesign.logoBadge || 'ISKRA'}
                 </span>
               </div>

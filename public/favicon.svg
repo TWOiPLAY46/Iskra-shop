@@ -12,13 +12,13 @@
   <!-- Bold White Tall ISKRA Text -->
   <text 
     x="256" 
-    y="292" 
+    y="294" 
     font-family="system-ui, -apple-system, sans-serif, 'Arial Black'" 
     font-weight="900" 
-    font-size="132" 
+    font-size="144" 
     fill="#ffffff" 
     text-anchor="middle" 
-    letter-spacing="4"
+    letter-spacing="2"
     transform="scale(1.04, 1.12) translate(-10, -28)"
   >
     ISKRA

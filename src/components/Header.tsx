@@ -119,7 +119,7 @@ export const Header: React.FC = () => {
                 {/* Red rectangular ISKRA badge */}
                 <div className="relative shrink-0">
                   <div className="flex items-center justify-center bg-[#e5001e] hover:bg-[#d4001a] text-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-[6px] shadow-xs transition-transform duration-150 group-hover:scale-[1.02] active:scale-95">
-                    <span className="font-black text-white text-sm sm:text-base tracking-[0.06em] font-display leading-none transform scale-y-110 scale-x-105 inline-block uppercase select-none">
+                    <span className="font-black text-white text-[15.5px] sm:text-[18px] tracking-[0.05em] font-display leading-none transform scale-y-110 scale-x-105 inline-block uppercase select-none">
                       {headerDesign.logoBadge || 'ISKRA'}
                     </span>
                   </div>
