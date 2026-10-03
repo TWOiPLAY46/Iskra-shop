@@ -131,7 +131,7 @@ export interface StockAlertRequest {
   productPrice?: number;
   phone: string;
   name?: string;
-  channel?: 'sms' | 'viber' | 'telegram' | 'call';
+  channel?: 'sms' | 'viber' | 'telegram' | 'whatsapp' | 'call';
   telegramUsername?: string;
   createdAt: string;
   status: 'pending' | 'notified' | 'cancelled';

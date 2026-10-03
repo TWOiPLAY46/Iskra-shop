@@ -69,6 +69,15 @@ export function generateTelegramUrl(phone: string, text?: string, username?: str
 }
 
 /**
+ * Generate WhatsApp direct chat URL (wa.me)
+ */
+export function generateWhatsAppUrl(phone: string, text?: string): string {
+  const digitsOnly = formatPhoneE164(phone).replace(/\D/g, '');
+  const encodedText = text ? `?text=${encodeURIComponent(text)}` : '';
+  return `https://wa.me/${digitsOnly}${encodedText}`;
+}
+
+/**
  * Format a template message with product and price
  */
 export function formatStockAlertSms(

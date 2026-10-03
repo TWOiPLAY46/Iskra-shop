@@ -171,7 +171,7 @@ interface StoreContextType {
     sku?: string,
     image?: string,
     price?: number,
-    channel?: 'sms' | 'viber' | 'telegram' | 'call',
+    channel?: 'sms' | 'viber' | 'telegram' | 'whatsapp' | 'call',
     telegramUsername?: string
   ) => Promise<boolean>;
   updateStockAlertStatus: (alertId: string, status: 'pending' | 'notified' | 'cancelled') => void;
@@ -2081,7 +2081,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     sku?: string,
     image?: string,
     price?: number,
-    channel?: 'sms' | 'viber' | 'telegram' | 'call',
+    channel?: 'sms' | 'viber' | 'telegram' | 'whatsapp' | 'call',
     telegramUsername?: string
   ): Promise<boolean> => {
     const cleanPhone = phone.replace(/[^0-9+]/g, '');
@@ -2116,6 +2116,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const channelLabel = {
         viber: '💬 Viber',
         telegram: '✈️ Telegram' + (telegramUsername ? ` (@${telegramUsername.replace('@', '')})` : ''),
+        whatsapp: '🟢 WhatsApp',
         sms: '✉️ SMS',
         call: '📞 Дзвінок менеджера'
       }[channel || 'sms'] || 'SMS / Месенджер';
