@@ -176,6 +176,8 @@ interface StoreContextType {
   ) => Promise<boolean>;
   updateStockAlertStatus: (alertId: string, status: 'pending' | 'notified' | 'cancelled') => void;
   deleteStockAlert: (alertId: string) => void;
+  clearAllStockAlerts: () => void;
+  clearNotifiedStockAlerts: () => void;
 
   // Site Settings & Features
   updateSiteSettings: (settings: SiteSettings) => void;
@@ -2156,6 +2158,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Запит на сповіщення видалено', 'info');
   };
 
+  const clearAllStockAlerts = () => {
+    stockAlerts.forEach(a => {
+      if (firebaseConfig.enabled) {
+        deleteStockAlertFromFirebase(firebaseConfig, a.id).catch(() => {});
+      }
+    });
+    setStockAlerts([]);
+    try {
+      localStorage.removeItem('iskra_stock_alerts_v1');
+    } catch {}
+    showToast('Всі запити на сповіщення видалено', 'info');
+  };
+
+  const clearNotifiedStockAlerts = () => {
+    const toDelete = stockAlerts.filter(a => a.status === 'notified');
+    const remaining = stockAlerts.filter(a => a.status !== 'notified');
+    toDelete.forEach(a => {
+      if (firebaseConfig.enabled) {
+        deleteStockAlertFromFirebase(firebaseConfig, a.id).catch(() => {});
+      }
+    });
+    setStockAlerts(remaining);
+    try {
+      localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(remaining));
+    } catch {}
+    showToast(`Видалено ${toDelete.length} сповіщених запитів`, 'info');
+  };
+
   // Site Settings
   const updateSiteSettings = (settings: SiteSettings) => {
     setSiteSettings(settings);
@@ -2338,6 +2368,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addStockAlert,
         updateStockAlertStatus,
         deleteStockAlert,
+        clearAllStockAlerts,
+        clearNotifiedStockAlerts,
         updateSiteSettings,
         updateSiteFeatures,
         updateHeaderDesign,

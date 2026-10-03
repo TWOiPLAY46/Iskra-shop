@@ -610,6 +610,8 @@ export const AdminPanel: React.FC = () => {
     stockAlerts,
     updateStockAlertStatus,
     deleteStockAlert,
+    clearAllStockAlerts,
+    clearNotifiedStockAlerts,
     updateSiteSettings,
     updateSiteFeatures,
     updateHeaderDesign,
@@ -657,6 +659,7 @@ export const AdminPanel: React.FC = () => {
   const [stockAlertInStockOnly, setStockAlertInStockOnly] = useState(false);
   const [smsModalAlert, setSmsModalAlert] = useState<{ alert: StockAlertRequest; text: string } | null>(null);
   const [isSendingGatewaySms, setIsSendingGatewaySms] = useState(false);
+  const [selectedStockAlertIds, setSelectedStockAlertIds] = useState<string[]>([]);
 
   // Search & Filter states
   const [productSearch, setProductSearch] = useState('');
@@ -4566,6 +4569,40 @@ export const AdminPanel: React.FC = () => {
                     </div>
                   )}
 
+                  {notifiedCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Видалити всі ${notifiedCount} сповіщених запитів зі списку?`)) {
+                          clearNotifiedStockAlerts();
+                          setSelectedStockAlertIds([]);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 transition-colors cursor-pointer shadow-2xs"
+                      title="Видалити всі запити, які вже мають статус 'Сповіщено'"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Очистити сповіщені ({notifiedCount})</span>
+                    </button>
+                  )}
+
+                  {stockAlerts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Видалити ВСІ запити на сповіщення про наявність?')) {
+                          clearAllStockAlerts();
+                          setSelectedStockAlertIds([]);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 transition-colors cursor-pointer shadow-2xs"
+                      title="Видалити всі записи зі списку"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Видалити всі ({stockAlerts.length})</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => handleTabChange('settings')}
@@ -4664,6 +4701,49 @@ export const AdminPanel: React.FC = () => {
               </div>
             </div>
 
+            {/* Batch actions bar for stock alerts */}
+            {selectedStockAlertIds.length > 0 && (
+              <div className="bg-slate-900 text-white rounded-2xl p-3 sm:px-5 flex flex-wrap items-center justify-between gap-3 shadow-md animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  <span>Вибрано запитів: {selectedStockAlertIds.length}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      selectedStockAlertIds.forEach(id => updateStockAlertStatus(id, 'notified'));
+                      setSelectedStockAlertIds([]);
+                      showToast(`Позначено ${selectedStockAlertIds.length} запитів як сповіщені`, 'success');
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs"
+                  >
+                    Позначити сповіщеними
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Видалити обрані (${selectedStockAlertIds.length}) запити на сповіщення?`)) {
+                        selectedStockAlertIds.forEach(id => deleteStockAlert(id));
+                        setSelectedStockAlertIds([]);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Видалити обрані ({selectedStockAlertIds.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStockAlertIds([])}
+                    className="px-2.5 py-1.5 text-slate-300 hover:text-white text-xs cursor-pointer font-medium"
+                  >
+                    Скасувати вибір
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* List / Table */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               {filteredAlerts.length === 0 ? (
@@ -4685,6 +4765,28 @@ export const AdminPanel: React.FC = () => {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px]">
                       <tr>
+                        <th className="py-3 px-3 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={
+                              filteredAlerts.length > 0 &&
+                              filteredAlerts.every(a => selectedStockAlertIds.includes(a.id))
+                            }
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedStockAlertIds(Array.from(new Set([
+                                  ...selectedStockAlertIds,
+                                  ...filteredAlerts.map(a => a.id)
+                                ])));
+                              } else {
+                                const filteredIds = new Set(filteredAlerts.map(a => a.id));
+                                setSelectedStockAlertIds(prev => prev.filter(id => !filteredIds.has(id)));
+                              }
+                            }}
+                            className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                            title="Вибрати всі відфільтровані"
+                          />
+                        </th>
                         <th className="py-3 px-4">Дата / Час</th>
                         <th className="py-3 px-4">Товар</th>
                         <th className="py-3 px-4">Наявність наразі</th>
@@ -4698,9 +4800,30 @@ export const AdminPanel: React.FC = () => {
                         const targetProd = products.find(p => p.id === alert.productId);
                         const currentStock = targetProd ? targetProd.stock : 0;
                         const isNowInStock = currentStock > 0;
+                        const isSelected = selectedStockAlertIds.includes(alert.id);
 
                         return (
-                          <tr key={alert.id} className="hover:bg-slate-50/80 transition-colors">
+                          <tr 
+                            key={alert.id} 
+                            className={`transition-colors ${
+                              isSelected ? 'bg-amber-50/60' : 'hover:bg-slate-50/80'
+                            }`}
+                          >
+                            <td className="py-3 px-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedStockAlertIds(prev => [...prev, alert.id]);
+                                  } else {
+                                    setSelectedStockAlertIds(prev => prev.filter(id => id !== alert.id));
+                                  }
+                                }}
+                                className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                              />
+                            </td>
+
                             <td className="py-3 px-4 text-slate-500 font-mono whitespace-nowrap">
                               {new Date(alert.createdAt).toLocaleString('uk-UA', {
                                 day: '2-digit',
@@ -4920,11 +5043,17 @@ export const AdminPanel: React.FC = () => {
 
                               <button
                                 type="button"
-                                onClick={() => deleteStockAlert(alert.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                onClick={() => {
+                                  if (window.confirm(`Видалити запит на сповіщення від ${alert.name || alert.phone}?`)) {
+                                    deleteStockAlert(alert.id);
+                                    setSelectedStockAlertIds(prev => prev.filter(id => id !== alert.id));
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition-colors cursor-pointer shadow-2xs"
                                 title="Видалити запит"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                <span className="hidden xl:inline">Видалити</span>
                               </button>
                             </td>
                           </tr>
