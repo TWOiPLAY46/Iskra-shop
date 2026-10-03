@@ -4787,12 +4787,12 @@ export const AdminPanel: React.FC = () => {
                             title="Вибрати всі відфільтровані"
                           />
                         </th>
-                        <th className="py-3 px-4">Дата / Час</th>
-                        <th className="py-3 px-4">Товар</th>
-                        <th className="py-3 px-4">Наявність наразі</th>
-                        <th className="py-3 px-4">Клієнт / Телефон</th>
-                        <th className="py-3 px-4">Статус</th>
-                        <th className="py-3 px-4 text-right">Дії</th>
+                        <th className="py-2.5 px-2 text-center w-20">Час / Дата</th>
+                        <th className="py-2.5 px-3">Товар</th>
+                        <th className="py-2.5 px-2.5 text-center">Наявність</th>
+                        <th className="py-2.5 px-3">Клієнт / Зв'язок</th>
+                        <th className="py-2.5 px-2.5 text-center">Статус</th>
+                        <th className="py-2.5 px-3 text-right">Сповіщення та дії</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -4809,7 +4809,7 @@ export const AdminPanel: React.FC = () => {
                               isSelected ? 'bg-amber-50/60' : 'hover:bg-slate-50/80'
                             }`}
                           >
-                            <td className="py-3 px-3 text-center">
+                            <td className="py-2.5 px-2 text-center">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -4824,120 +4824,121 @@ export const AdminPanel: React.FC = () => {
                               />
                             </td>
 
-                            <td className="py-3 px-4 text-slate-500 font-mono whitespace-nowrap">
-                              {new Date(alert.createdAt).toLocaleString('uk-UA', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                            {/* Compact Time / Date */}
+                            <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                              <div className="inline-flex flex-col items-center leading-tight font-mono">
+                                <span className="text-[12px] font-bold text-slate-800">
+                                  {new Date(alert.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  {new Date(alert.createdAt).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                </span>
+                              </div>
                             </td>
 
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2.5 max-w-xs">
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-2 max-w-[200px]">
                                 {alert.productImage ? (
                                   <img
                                     src={getSafeImageUrl(alert.productImage)}
                                     alt=""
-                                    className="w-9 h-9 rounded-lg object-contain bg-slate-50 border border-slate-200 p-0.5 shrink-0"
+                                    className="w-8 h-8 rounded-lg object-contain bg-slate-50 border border-slate-200 p-0.5 shrink-0"
                                   />
                                 ) : (
-                                  <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
-                                    <Package className="w-4 h-4" />
+                                  <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
+                                    <Package className="w-3.5 h-3.5" />
                                   </div>
                                 )}
                                 <div className="min-w-0">
-                                  <div className="font-bold text-slate-900 line-clamp-1 leading-snug">
+                                  <div className="font-bold text-slate-900 truncate leading-snug text-xs" title={alert.productName}>
                                     {alert.productName}
                                   </div>
                                   <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
                                     {alert.productSku && <span>Арт: {alert.productSku}</span>}
-                                    {alert.productPrice && <span>• {alert.productPrice} грн</span>}
+                                    {alert.productPrice && <span className="font-semibold text-slate-600">• {alert.productPrice} грн</span>}
                                   </div>
                                 </div>
                               </div>
                             </td>
 
-                            <td className="py-3 px-4 whitespace-nowrap">
+                            <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
                               {isNowInStock ? (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px] animate-pulse">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px] animate-pulse">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                                  <span>В наявності: {currentStock} шт!</span>
+                                  <span>{currentStock} шт (є!)</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 text-slate-400 font-medium text-xs">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium text-[11px]">
                                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-                                  <span>0 шт (немає)</span>
+                                  <span>0 шт</span>
                                 </span>
                               )}
                             </td>
 
-                            <td className="py-3 px-4">
-                              <div>
-                                <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                            <td className="py-2.5 px-3">
+                              <div className="min-w-[130px]">
+                                <div className="font-bold text-slate-900 text-xs flex items-center gap-1 flex-wrap">
                                   <span>{alert.name || 'Покупець'}</span>
                                   {alert.channel === 'telegram' && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[10px] font-bold">
-                                      <span>✈️ Telegram</span>
-                                      {alert.telegramUsername && <span className="font-mono">@{alert.telegramUsername.replace('@', '')}</span>}
+                                    <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-sky-100 text-sky-800 text-[10px] font-bold">
+                                      ✈️ TG
                                     </span>
                                   )}
                                   {alert.channel === 'viber' && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
-                                      <span>💬 Viber</span>
+                                    <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-purple-100 text-purple-800 text-[10px] font-bold">
+                                      💬 Viber
                                     </span>
                                   )}
                                   {alert.channel === 'sms' && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
-                                      <span>✉️ SMS</span>
+                                    <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
+                                      ✉️ SMS
                                     </span>
                                   )}
                                   {alert.channel === 'call' && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
-                                      <span>📞 Дзвінок</span>
+                                    <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-100 text-amber-900 text-[10px] font-bold">
+                                      📞 Дзвінок
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2 mt-0.5">
+                                <div className="flex items-center gap-1.5 mt-0.5">
                                   <a
                                     href={`tel:${alert.phone}`}
-                                    className="font-mono text-amber-700 hover:text-amber-900 font-bold flex items-center gap-1 underline"
+                                    className="font-mono text-amber-700 hover:text-amber-900 font-bold flex items-center gap-1 text-[11px] underline"
                                   >
-                                    <Phone className="w-3 h-3" />
+                                    <Phone className="w-2.5 h-2.5" />
                                     <span>{alert.phone}</span>
                                   </a>
                                   <button
                                     type="button"
                                     onClick={() => {
                                       navigator.clipboard.writeText(alert.phone);
-                                      showToast('Номер телефону скопійовано', 'info');
+                                      showToast('Номер скопійовано', 'info');
                                     }}
-                                    className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                                     title="Скопіювати номер"
                                   >
-                                    копіювати
+                                    <Copy className="w-2.5 h-2.5" />
                                   </button>
                                 </div>
                               </div>
                             </td>
 
-                            <td className="py-3 px-4 whitespace-nowrap">
+                            <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
                               {alert.status === 'pending' ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold text-xs">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[11px]">
                                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                  <span>Очікує сповіщення</span>
+                                  <span>Очікує</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
                                   <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
                                   <span>Сповіщено</span>
                                 </span>
                               )}
                             </td>
 
-                            <td className="py-3 px-4 text-right whitespace-nowrap">
-                              <div className="inline-flex items-center justify-end gap-1.5">
+                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center justify-end gap-1 flex-wrap">
                                 {/* 1-Click Notifications Buttons */}
                                 {(() => {
                                   const smsMessage = formatStockAlertSms(
@@ -4951,22 +4952,28 @@ export const AdminPanel: React.FC = () => {
                                   const tgUrl = generateTelegramUrl(alert.phone, smsMessage, alert.telegramUsername);
 
                                   return (
-                                    <>
+                                    <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                                      {/* SMS Button */}
                                       <a
                                         href={smsUrl}
                                         onClick={() => {
                                           if (alert.status === 'pending') {
                                             updateStockAlertStatus(alert.id, 'notified');
                                           }
-                                          showToast('Відкрито додаток SMS з готовим текстом', 'info');
+                                          showToast('Відкрито SMS з готовим текстом', 'info');
                                         }}
-                                        className="inline-flex items-center gap-1 px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-colors shadow-2xs"
-                                        title="Надіслати SMS (відкриє SMS на телефоні/ПК з готовим текстом)"
+                                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                                          alert.channel === 'sms'
+                                            ? 'bg-blue-600 text-white shadow-2xs'
+                                            : 'text-blue-700 hover:bg-blue-50'
+                                        }`}
+                                        title="Надіслати SMS (відкриє SMS з готовим текстом)"
                                       >
-                                        <MessageSquare className="w-3 h-3 text-blue-600" />
+                                        <MessageSquare className="w-3 h-3" />
                                         <span>SMS</span>
                                       </a>
 
+                                      {/* Viber Button */}
                                       <a
                                         href={viberUrl}
                                         target="_blank"
@@ -4977,13 +4984,18 @@ export const AdminPanel: React.FC = () => {
                                           }
                                           showToast('Відкрито діалог у Viber', 'info');
                                         }}
-                                        className="inline-flex items-center gap-1 px-2 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl border border-purple-200 transition-colors shadow-2xs"
+                                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                                          alert.channel === 'viber'
+                                            ? 'bg-purple-600 text-white shadow-2xs'
+                                            : 'text-purple-700 hover:bg-purple-50'
+                                        }`}
                                         title="Написати клієнту у Viber"
                                       >
-                                        <MessageCircle className="w-3 h-3 text-purple-600" />
+                                        <MessageCircle className="w-3 h-3" />
                                         <span>Viber</span>
                                       </a>
 
+                                      {/* Telegram Button */}
                                       <a
                                         href={tgUrl}
                                         target="_blank"
@@ -4992,70 +5004,87 @@ export const AdminPanel: React.FC = () => {
                                           if (alert.status === 'pending') {
                                             updateStockAlertStatus(alert.id, 'notified');
                                           }
-                                          showToast('Відкрито Telegram для зв\'язку з клієнтом', 'info');
+                                          showToast('Відкрито Telegram', 'info');
                                         }}
-                                        className="inline-flex items-center gap-1 px-2 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs rounded-xl border border-sky-200 transition-colors shadow-2xs"
+                                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                                          alert.channel === 'telegram'
+                                            ? 'bg-sky-500 text-white shadow-2xs'
+                                            : 'text-sky-700 hover:bg-sky-50'
+                                        }`}
                                         title="Написати клієнту в Telegram"
                                       >
-                                        <Send className="w-3 h-3 text-sky-600" />
-                                        <span>Telegram</span>
+                                        <Send className="w-3 h-3" />
+                                        <span>TG</span>
                                       </a>
 
+                                      {/* Call Button */}
                                       <a
                                         href={`tel:${alert.phone}`}
-                                        className="inline-flex items-center gap-1 px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-2xs transition-colors"
+                                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                                          alert.channel === 'call'
+                                            ? 'bg-amber-500 text-slate-950 shadow-2xs'
+                                            : 'text-slate-700 hover:bg-amber-50'
+                                        }`}
                                         title="Зателефонувати клієнту"
                                       >
                                         <Phone className="w-3 h-3" />
                                         <span>Дзвінок</span>
                                       </a>
 
+                                      {/* SMS Gateway send button */}
                                       <button
                                         type="button"
                                         onClick={() => setSmsModalAlert({ alert, text: smsMessage })}
-                                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                        title="Переглянути або надіслати через SMS-шлюз"
+                                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
+                                        title="Відправити через SMS-шлюз (TurboSMS/SMSClub)"
                                       >
-                                        <Send className="w-3.5 h-3.5" />
+                                        <Send className="w-3 h-3" />
                                       </button>
-                                    </>
+                                    </div>
                                   );
                                 })()}
 
+                                {/* Mark as Notified / Reset Button */}
                                 {alert.status === 'pending' ? (
                                   <button
                                     type="button"
-                                    onClick={() => updateStockAlertStatus(alert.id, 'notified')}
+                                    onClick={() => {
+                                      updateStockAlertStatus(alert.id, 'notified');
+                                      showToast('Позначено як сповіщене', 'success');
+                                    }}
                                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer shrink-0"
-                                    title="Позначити клієнта як сповіщеного"
+                                    title="Позначити цей запит як сповіщений"
                                   >
                                     <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                    <span>Сповіщено</span>
+                                    <span>Позначити</span>
                                   </button>
                                 ) : (
                                   <button
                                     type="button"
-                                    onClick={() => updateStockAlertStatus(alert.id, 'pending')}
+                                    onClick={() => {
+                                      updateStockAlertStatus(alert.id, 'pending');
+                                      showToast('Повернуто в очікування', 'info');
+                                    }}
                                     className="inline-flex items-center gap-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs rounded-xl transition-colors cursor-pointer shrink-0"
-                                    title="Повернути в очікування"
+                                    title="Повернути запит в статус очікування"
                                   >
                                     <span>↩ Очікує</span>
                                   </button>
                                 )}
 
+                                {/* Delete Button */}
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (window.confirm(`Видалити запит на сповіщення від ${alert.name || alert.phone}?`)) {
+                                    if (window.confirm(`Видалити запит від ${alert.name || alert.phone}?`)) {
                                       deleteStockAlert(alert.id);
                                       setSelectedStockAlertIds(prev => prev.filter(id => id !== alert.id));
                                     }
                                   }}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition-colors cursor-pointer shadow-2xs shrink-0"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer shrink-0 border border-transparent hover:border-rose-200"
                                   title="Видалити запит"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                  <span>Видалити</span>
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                                 </button>
                               </div>
                             </td>
