@@ -68,9 +68,11 @@ import {
   Building2,
   Boxes,
   Clipboard,
+  Bell,
+  Phone,
   X
 } from 'lucide-react';
-import { Order, OrderStatus, Product, ProductBadge, ProductReview, FirebaseConnectionConfig } from '../types/store';
+import { Order, OrderStatus, Product, ProductBadge, ProductReview, StockAlertRequest, FirebaseConnectionConfig } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
 import { UkrSkladSyncModal } from './UkrSkladSyncModal';
 import { CsvImportModal } from './CsvImportModal';
@@ -596,6 +598,9 @@ export const AdminPanel: React.FC = () => {
     updateReview,
     deleteReview,
     resetDefaultReviews,
+    stockAlerts,
+    updateStockAlertStatus,
+    deleteStockAlert,
     updateSiteSettings,
     updateSiteFeatures,
     updateHeaderDesign,
@@ -618,11 +623,11 @@ export const AdminPanel: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'products' | 'weekly_deal' | 'categories' | 'orders' | 'reviews' | 'clients' | 'analytics' | 'features' | 'database' | 'delivery' | 'payments' | 'design' | 'settings'
+    'products' | 'weekly_deal' | 'categories' | 'orders' | 'reviews' | 'clients' | 'stock_alerts' | 'analytics' | 'features' | 'database' | 'delivery' | 'payments' | 'design' | 'settings'
   >(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('iskra_admin_tab');
-      const validTabs = ['products', 'weekly_deal', 'categories', 'orders', 'reviews', 'clients', 'analytics', 'features', 'database', 'delivery', 'payments', 'design', 'settings'];
+      const validTabs = ['products', 'weekly_deal', 'categories', 'orders', 'reviews', 'clients', 'stock_alerts', 'analytics', 'features', 'database', 'delivery', 'payments', 'design', 'settings'];
       if (saved && validTabs.includes(saved)) {
         return saved as any;
       }
@@ -635,6 +640,11 @@ export const AdminPanel: React.FC = () => {
       localStorage.setItem('iskra_admin_tab', activeTab);
     }
   }, [activeTab]);
+
+  // Stock Alerts states
+  const [stockAlertSearch, setStockAlertSearch] = useState('');
+  const [stockAlertStatusFilter, setStockAlertStatusFilter] = useState<'all' | 'pending' | 'notified'>('all');
+  const [stockAlertFilterProduct, setStockAlertFilterProduct] = useState<string>('');
 
   // Search & Filter states
   const [productSearch, setProductSearch] = useState('');
@@ -911,6 +921,7 @@ export const AdminPanel: React.FC = () => {
   const lowStockCount = lowStockProducts.length;
   const totalCriticalStockCount = outOfStockCount + lowStockCount;
   const averageOrderValue = totalOrders > 0 ? totalSalesSum / totalOrders : 0;
+  const pendingStockAlertsCount = stockAlerts.filter((a) => a.status === 'pending').length;
 
   if (!isAdminLoggedIn) {
     return (
@@ -1772,6 +1783,24 @@ export const AdminPanel: React.FC = () => {
         >
           <Users className="w-4 h-4" />
           <span>Клієнти ({Object.keys(clients).length})</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setStockAlertFilterProduct('');
+            handleTabChange('stock_alerts');
+          }}
+          className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'stock_alerts' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Bell className="w-4 h-4 text-amber-500" />
+          <span>Очікують товар</span>
+          {pendingStockAlertsCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-black bg-amber-500 text-slate-950 leading-none animate-pulse">
+              {pendingStockAlertsCount}
+            </span>
+          )}
         </button>
 
         <button
@@ -3100,6 +3129,24 @@ export const AdminPanel: React.FC = () => {
                               {p.stock <= 0 ? '❌ 0 шт' : `⚠️ ${p.stock} шт`}
                             </span>
                           )}
+                          {p.stock <= 0 && (() => {
+                            const waiting = stockAlerts.filter(a => a.productId === p.id && a.status === 'pending');
+                            if (waiting.length === 0) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setStockAlertFilterProduct(p.name);
+                                  handleTabChange('stock_alerts');
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 hover:bg-amber-500 text-slate-950 transition-colors shadow-2xs cursor-pointer shrink-0 animate-bounce"
+                                title="Клієнти очікують на цей товар! Натисніть для перегляду"
+                              >
+                                <Bell className="w-2.5 h-2.5 fill-slate-950" />
+                                <span>Чекають: {waiting.length}</span>
+                              </button>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="py-2.5 px-4">
@@ -4389,7 +4436,333 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* TAB: CUSTOMER REVIEWS MANAGEMENT */}
+      {/* TAB: STOCK AVAILABILITY ALERTS (ОЧІКУЮТЬ ТОВАР) */}
+      {activeTab === 'stock_alerts' && (() => {
+        const filteredAlerts = stockAlerts.filter((alert) => {
+          if (stockAlertStatusFilter !== 'all' && alert.status !== stockAlertStatusFilter) {
+            return false;
+          }
+          if (stockAlertFilterProduct && !alert.productName.toLowerCase().includes(stockAlertFilterProduct.toLowerCase())) {
+            return false;
+          }
+          if (stockAlertSearch) {
+            const q = stockAlertSearch.toLowerCase().trim();
+            const matchesPhone = alert.phone.includes(q);
+            const matchesName = (alert.name || '').toLowerCase().includes(q);
+            const matchesProduct = alert.productName.toLowerCase().includes(q);
+            const matchesSku = (alert.productSku || '').toLowerCase().includes(q);
+            if (!matchesPhone && !matchesName && !matchesProduct && !matchesSku) return false;
+          }
+          return true;
+        });
+
+        const pendingCount = stockAlerts.filter(a => a.status === 'pending').length;
+        const notifiedCount = stockAlerts.filter(a => a.status === 'notified').length;
+
+        return (
+          <div className="space-y-6 animate-in fade-in duration-150">
+            {/* Header & Stats Banner */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                      <Bell className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span>Запити на сповіщення про наявність</span>
+                        {pendingCount > 0 && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-500 text-slate-950 animate-pulse">
+                            {pendingCount} очікують
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Покупці, які залишили телефон біля товарів, яких немає на складі (0 шт). Зателефонуйте їм або надішліть SMS при надходженні партії.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {stockAlertFilterProduct && (
+                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl text-xs text-amber-900">
+                    <span>Фільтр товару: <b>{stockAlertFilterProduct}</b></span>
+                    <button
+                      type="button"
+                      onClick={() => setStockAlertFilterProduct('')}
+                      className="text-amber-700 hover:text-amber-950 font-bold ml-1 cursor-pointer"
+                    >
+                      × Скинути
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 3 Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6">
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                  <span className="text-xs text-slate-500 font-medium">Всього підписок</span>
+                  <div className="text-2xl font-black text-slate-900 mt-1">
+                    {stockAlerts.length}
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 rounded-xl p-4 border border-amber-200/70">
+                  <span className="text-xs text-amber-800 font-semibold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span>Очікують дзвінка / надходження</span>
+                  </span>
+                  <div className="text-2xl font-black text-amber-950 mt-1">
+                    {pendingCount}
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200/70">
+                  <span className="text-xs text-emerald-800 font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Вже сповіщено</span>
+                  </span>
+                  <div className="text-2xl font-black text-emerald-950 mt-1">
+                    {notifiedCount}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col sm:flex-row gap-3 items-center justify-between">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Пошук за товаром, телефоном, ПІБ..."
+                  value={stockAlertSearch}
+                  onChange={(e) => setStockAlertSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-amber-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 self-start sm:self-auto w-full sm:w-auto overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setStockAlertStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    stockAlertStatusFilter === 'all'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Усі ({stockAlerts.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockAlertStatusFilter('pending')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                    stockAlertStatusFilter === 'pending'
+                      ? 'bg-amber-500 text-slate-950 shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>Очікують</span>
+                  {pendingCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-950 text-white font-mono">
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockAlertStatusFilter('notified')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    stockAlertStatusFilter === 'notified'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Сповіщено ({notifiedCount})
+                </button>
+              </div>
+            </div>
+
+            {/* List / Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              {filteredAlerts.length === 0 ? (
+                <div className="p-12 text-center text-slate-500 space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 mx-auto flex items-center justify-center">
+                    <Bell className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-800">
+                    {stockAlertSearch || stockAlertStatusFilter !== 'all' || stockAlertFilterProduct
+                      ? 'Запитів за такими фільтрами не знайдено'
+                      : 'Поки немає жодного запиту на сповіщення'}
+                  </h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Коли покупці натискатимуть «Повідомити про наявність» на товарах із залишком 0 шт, вони з'являтимуться в цьому списку.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="py-3 px-4">Дата / Час</th>
+                        <th className="py-3 px-4">Товар</th>
+                        <th className="py-3 px-4">Наявність наразі</th>
+                        <th className="py-3 px-4">Клієнт / Телефон</th>
+                        <th className="py-3 px-4">Статус</th>
+                        <th className="py-3 px-4 text-right">Дії</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredAlerts.map((alert) => {
+                        const targetProd = products.find(p => p.id === alert.productId);
+                        const currentStock = targetProd ? targetProd.stock : 0;
+                        const isNowInStock = currentStock > 0;
+
+                        return (
+                          <tr key={alert.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-4 text-slate-500 font-mono whitespace-nowrap">
+                              {new Date(alert.createdAt).toLocaleString('uk-UA', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5 max-w-xs">
+                                {alert.productImage ? (
+                                  <img
+                                    src={getSafeImageUrl(alert.productImage)}
+                                    alt=""
+                                    className="w-9 h-9 rounded-lg object-contain bg-slate-50 border border-slate-200 p-0.5 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
+                                    <Package className="w-4 h-4" />
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-900 line-clamp-1 leading-snug">
+                                    {alert.productName}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                                    {alert.productSku && <span>Арт: {alert.productSku}</span>}
+                                    {alert.productPrice && <span>• {alert.productPrice} грн</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              {isNowInStock ? (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px] animate-pulse">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                                  <span>В наявності: {currentStock} шт!</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-slate-400 font-medium text-xs">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                  <span>0 шт (немає)</span>
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div>
+                                <div className="font-bold text-slate-900 flex items-center gap-1">
+                                  <span>{alert.name || 'Покупець'}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <a
+                                    href={`tel:${alert.phone}`}
+                                    className="font-mono text-amber-700 hover:text-amber-900 font-bold flex items-center gap-1 underline"
+                                  >
+                                    <Phone className="w-3 h-3" />
+                                    <span>{alert.phone}</span>
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(alert.phone);
+                                      showToast('Номер телефону скопійовано', 'info');
+                                    }}
+                                    className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    title="Скопіювати номер"
+                                  >
+                                    копіювати
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              {alert.status === 'pending' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold text-xs">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                  <span>Очікує сповіщення</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs">
+                                  <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                  <span>Сповіщено</span>
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4 text-right whitespace-nowrap space-x-1.5">
+                              <a
+                                href={`tel:${alert.phone}`}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-2xs transition-colors"
+                                title="Зателефонувати клієнту"
+                              >
+                                <Phone className="w-3 h-3" />
+                                <span className="hidden sm:inline">Дзвінок</span>
+                              </a>
+
+                              {alert.status === 'pending' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => updateStockAlertStatus(alert.id, 'notified')}
+                                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200 transition-colors cursor-pointer"
+                                  title="Позначити як сповіщеного"
+                                >
+                                  Позначити сповіщеним
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => updateStockAlertStatus(alert.id, 'pending')}
+                                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs rounded-xl transition-colors cursor-pointer"
+                                  title="Повернути в очікування"
+                                >
+                                  В очікування
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => deleteStockAlert(alert.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Видалити запит"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
       {activeTab === 'reviews' && (
         <div className="space-y-6">
           

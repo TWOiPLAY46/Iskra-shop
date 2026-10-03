@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   Star,
   ShieldCheck,
-  ZoomIn
+  ZoomIn,
+  Bell
 } from 'lucide-react';
 import { Product } from '../types/store';
 import { getProductBrand } from '../utils/brandHelper';
@@ -28,7 +29,8 @@ export const ProductDetailModal: React.FC = () => {
     addToCart, 
     products,
     siteSettings,
-    showToast 
+    showToast,
+    openStockAlertModal 
   } = useStore();
 
   const [qty, setQty] = useState(1);
@@ -218,10 +220,14 @@ export const ProductDetailModal: React.FC = () => {
                   <div className="flex justify-between py-1.5 items-center">
                     <span className="text-slate-500 font-medium">Статус товару</span>
                     {isOutOfStock ? (
-                      <span className="font-semibold text-slate-400 text-xs flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                        Немає на складі
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => openStockAlertModal(quickViewProduct)}
+                        className="font-bold text-amber-800 hover:text-amber-950 text-xs flex items-center gap-1.5 cursor-pointer underline decoration-amber-400 underline-offset-2 transition-colors"
+                      >
+                        <Bell className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Закінчився (Повідомити про наявність)</span>
+                      </button>
                     ) : showLowStockBadge ? (
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs font-bold">
                         <span className="relative flex h-2 w-2">
@@ -336,41 +342,54 @@ export const ProductDetailModal: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-3">
-                {/* Stepper */}
-                <div className="flex items-center bg-slate-100 rounded-xl px-2 py-1 border border-slate-200">
-                  <button
-                    onClick={() => setQty(Math.max(1, qty - 1))}
-                    className="p-1 rounded text-slate-600 hover:text-slate-900 transition-colors"
-                    aria-label="Зменшити"
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="w-8 text-center font-bold text-xs font-mono text-slate-900">
-                    {qty}
-                  </span>
-                  <button
-                    onClick={() => setQty(Math.min(quickViewProduct.stock || 99, qty + 1))}
-                    className="p-1 rounded text-slate-600 hover:text-slate-900 transition-colors"
-                    aria-label="Збільшити"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {/* Stepper: only shown when in stock */}
+                {!isOutOfStock ? (
+                  <div className="flex items-center bg-slate-100 rounded-xl px-2 py-1 border border-slate-200">
+                    <button
+                      onClick={() => setQty(Math.max(1, qty - 1))}
+                      className="p-1 rounded text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                      aria-label="Зменшити"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-8 text-center font-bold text-xs font-mono text-slate-900">
+                      {qty}
+                    </span>
+                    <button
+                      onClick={() => setQty(Math.min(quickViewProduct.stock || 99, qty + 1))}
+                      className="p-1 rounded text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                      aria-label="Збільшити"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-900 text-xs font-semibold border border-amber-200">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span>Очікується поставка</span>
+                  </div>
+                )}
 
-                {/* Buy Button */}
+                {/* Buy Button or Notify Button */}
                 <div className="relative inline-flex items-center">
-                  <button
-                    onClick={handleBuy}
-                    disabled={isOutOfStock}
-                    className={`relative px-6 sm:px-8 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-white flex items-center gap-2 transition-all active:scale-95 shadow-sm ${
-                      isOutOfStock 
-                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-                        : 'bg-red-600 hover:bg-red-700 btn-pulse-red'
-                    }`}
-                  >
-                    <ShoppingBag className="w-4 h-4 stroke-[2]" />
-                    <span>Купити</span>
-                  </button>
+                  {isOutOfStock ? (
+                    <button
+                      type="button"
+                      onClick={() => openStockAlertModal(quickViewProduct)}
+                      className="relative px-5 sm:px-7 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-slate-950 bg-amber-500 hover:bg-amber-600 flex items-center gap-2 transition-all active:scale-95 shadow-sm border border-amber-400 cursor-pointer"
+                    >
+                      <Bell className="w-4 h-4 stroke-[2.2] text-slate-950" />
+                      <span>Повідомити про наявність</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleBuy}
+                      className="relative px-6 sm:px-8 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-white flex items-center gap-2 transition-all active:scale-95 shadow-sm bg-red-600 hover:bg-red-700 btn-pulse-red cursor-pointer"
+                    >
+                      <ShoppingBag className="w-4 h-4 stroke-[2]" />
+                      <span>Купити</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

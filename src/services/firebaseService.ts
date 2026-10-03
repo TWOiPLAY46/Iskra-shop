@@ -1,5 +1,5 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getDatabase, ref, set, get, onValue, update, Database } from 'firebase/database';
+import { getDatabase, ref, set, get, onValue, update, remove, Database } from 'firebase/database';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -1241,6 +1241,148 @@ export async function pushCallbackToFirebase(
   }
 
   return ok;
+}
+
+/**
+ * Push Stock Alert Request to Firebase (RTDB & Firestore)
+ */
+export async function pushStockAlertToFirebase(
+  config: FirebaseConnectionConfig,
+  alertData: { 
+    id: string; 
+    productId: string; 
+    productName: string; 
+    productSku?: string; 
+    productImage?: string; 
+    productPrice?: number;
+    phone: string; 
+    name?: string; 
+    createdAt: string; 
+    status: string; 
+    notifiedAt?: string 
+  }
+): Promise<boolean> {
+  let ok = false;
+  // RTDB
+  try {
+    const db = getOrInitFirebase(config);
+    if (db && alertData.id) {
+      await set(ref(db, `store/stockAlerts/${alertData.id}`), alertData);
+      ok = true;
+    }
+  } catch (err) {
+    console.warn("RTDB stock alert write warning:", err);
+  }
+
+  // REST fallback
+  if (!ok && config.databaseURL && alertData.id) {
+    try {
+      const res = await fetch(`${config.databaseURL.replace(/\/+$/, '')}/store/stockAlerts/${alertData.id}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(alertData)
+      });
+      if (res.ok) ok = true;
+    } catch {}
+  }
+
+  // Firestore safe attempt
+  try {
+    const firestore = getOrInitFirestore(config);
+    if (firestore && alertData.id) {
+      await setDoc(doc(firestore, 'stockAlerts', alertData.id), alertData, { merge: true });
+      ok = true;
+    }
+  } catch (err) {
+    console.warn("Firestore stock alert write warning:", err);
+  }
+
+  return ok;
+}
+
+/**
+ * Fetch Stock Alert Requests from Firebase
+ */
+export async function fetchStockAlertsFromFirebase(
+  config: FirebaseConnectionConfig
+): Promise<any[] | null> {
+  try {
+    const db = getOrInitFirebase(config);
+    if (db) {
+      const snap = await get(ref(db, 'store/stockAlerts'));
+      if (snap.exists() && snap.val()) {
+        const val = snap.val();
+        return Object.values(val);
+      }
+    }
+  } catch {}
+
+  // REST fallback
+  if (config.databaseURL) {
+    try {
+      const res = await fetch(`${config.databaseURL.replace(/\/+$/, '')}/store/stockAlerts.json`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data) return Object.values(data);
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+/**
+ * Update stock alert status in Firebase
+ */
+export async function updateStockAlertStatusInFirebase(
+  config: FirebaseConnectionConfig,
+  id: string,
+  status: string
+): Promise<boolean> {
+  const patch = {
+    status,
+    notifiedAt: status === 'notified' ? new Date().toISOString() : null
+  };
+
+  try {
+    const db = getOrInitFirebase(config);
+    if (db && id) {
+      await update(ref(db, `store/stockAlerts/${id}`), patch);
+    }
+  } catch {}
+
+  try {
+    const firestore = getOrInitFirestore(config);
+    if (firestore && id) {
+      await setDoc(doc(firestore, 'stockAlerts', id), patch, { merge: true });
+    }
+  } catch {}
+
+  return true;
+}
+
+/**
+ * Delete stock alert from Firebase
+ */
+export async function deleteStockAlertFromFirebase(
+  config: FirebaseConnectionConfig,
+  id: string
+): Promise<boolean> {
+  try {
+    const db = getOrInitFirebase(config);
+    if (db && id) {
+      await remove(ref(db, `store/stockAlerts/${id}`));
+    }
+  } catch {}
+
+  try {
+    const firestore = getOrInitFirestore(config);
+    if (firestore && id) {
+      await deleteDoc(doc(firestore, 'stockAlerts', id));
+    }
+  } catch {}
+
+  return true;
 }
 
 /**

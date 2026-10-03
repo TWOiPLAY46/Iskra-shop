@@ -7,6 +7,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { ProductDetailModal } from './components/ProductDetailModal';
+import { StockAlertModal } from './components/StockAlertModal';
 import { Footer } from './components/Footer';
 import { Toast } from './components/Toast';
 import { ConsultationWidget } from './components/ConsultationWidget';
@@ -34,6 +35,7 @@ const AppContent: React.FC = () => {
 
       {/* Modals & Slide-overs */}
       <ProductDetailModal />
+      <StockAlertModal />
       <CartDrawer />
       <CheckoutModal />
 

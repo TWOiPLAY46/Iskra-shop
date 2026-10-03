@@ -13,6 +13,7 @@ import {
   OrderStatus, 
   Product, 
   ProductReview,
+  StockAlertRequest,
   SiteFeatures, 
   SiteSettings,
   WeeklyDealConfig 
@@ -38,7 +39,11 @@ import {
   saveReviewDirectlyToDatabase,
   deleteReviewDirectlyFromDatabase,
   saveProductDirectlyToDatabase,
-  deleteProductDirectlyFromDatabase
+  deleteProductDirectlyFromDatabase,
+  pushStockAlertToFirebase,
+  fetchStockAlertsFromFirebase,
+  updateStockAlertStatusInFirebase,
+  deleteStockAlertFromFirebase
 } from '../services/firebaseService';
 import { 
   recordSuccessfulLogin, 
@@ -152,6 +157,23 @@ interface StoreContextType {
   deleteReview: (id: string) => void;
   voteHelpfulReview: (id: string) => void;
   resetDefaultReviews: () => void;
+
+  // Stock Availability Alerts
+  stockAlerts: StockAlertRequest[];
+  stockAlertModalProduct: Product | null;
+  openStockAlertModal: (product: Product) => void;
+  closeStockAlertModal: () => void;
+  addStockAlert: (
+    productId: string,
+    productName: string,
+    phone: string,
+    name?: string,
+    sku?: string,
+    image?: string,
+    price?: number
+  ) => Promise<boolean>;
+  updateStockAlertStatus: (alertId: string, status: 'pending' | 'notified' | 'cancelled') => void;
+  deleteStockAlert: (alertId: string) => void;
 
   // Site Settings & Features
   updateSiteSettings: (settings: SiteSettings) => void;
@@ -376,6 +398,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     return initialReviews;
   });
+
+  // Stock Availability Alerts (Customers waiting for out-of-stock items)
+  const [stockAlerts, setStockAlerts] = useState<StockAlertRequest[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('iskra_stock_alerts_v1');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {}
+      }
+    }
+    return [];
+  });
+
+  const [stockAlertModalProduct, setStockAlertModalProduct] = useState<Product | null>(null);
+
+  const openStockAlertModal = (product: Product) => {
+    setStockAlertModalProduct(product);
+  };
+
+  const closeStockAlertModal = () => {
+    setStockAlertModalProduct(null);
+  };
 
   // Client auth (check URL query ?client=... or localStorage)
   const [currentClientPhone, setCurrentClientPhone] = useState<string | null>(() => {
@@ -1995,6 +2041,89 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Відновлено стандартний список відгуків', 'info');
   };
 
+  // Stock Availability Alert Handlers
+  const addStockAlert = async (
+    productId: string,
+    productName: string,
+    phone: string,
+    name?: string,
+    sku?: string,
+    image?: string,
+    price?: number
+  ): Promise<boolean> => {
+    const cleanPhone = phone.replace(/[^0-9+]/g, '');
+    const newAlert: StockAlertRequest = {
+      id: 'alert_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      productId,
+      productName,
+      productSku: sku,
+      productImage: image,
+      productPrice: price,
+      phone: cleanPhone,
+      name: name?.trim() || 'Покупець',
+      createdAt: new Date().toISOString(),
+      status: 'pending'
+    };
+
+    const next = [newAlert, ...stockAlerts];
+    setStockAlerts(next);
+    try {
+      localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(next));
+    } catch {}
+
+    // Push to Firebase RTDB and Firestore
+    if (firebaseConfig.enabled) {
+      pushStockAlertToFirebase(firebaseConfig, newAlert).catch(() => {});
+    }
+
+    // Telegram notification to store owner/manager if botToken & chatId configured
+    if (siteSettings.botToken && siteSettings.chatId) {
+      const msg = `🔔 *Новий запит на сповіщення про наявність!*\n\n📦 *Товар:* ${productName}\n${sku ? `🏷 *Артикул:* ${sku}\n` : ''}${price ? `💰 *Ціна:* ${price} грн\n` : ''}👤 *Клієнт:* ${name?.trim() || 'Не вказано'}\n📞 *Телефон:* ${cleanPhone}\n⏰ *Час:* ${new Date().toLocaleString('uk-UA')}`;
+      fetch(`https://api.telegram.org/bot${siteSettings.botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: siteSettings.chatId,
+          text: msg,
+          parse_mode: 'Markdown'
+        })
+      }).catch(() => {});
+    }
+
+    showToast('Дякуємо! Ми надішлемо вам сповіщення, щойно товар з\'явиться на складі.', 'success');
+    return true;
+  };
+
+  const updateStockAlertStatus = (alertId: string, status: 'pending' | 'notified' | 'cancelled') => {
+    const next = stockAlerts.map(a => a.id === alertId ? {
+      ...a,
+      status,
+      notifiedAt: status === 'notified' ? new Date().toISOString() : a.notifiedAt
+    } : a);
+    setStockAlerts(next);
+    try {
+      localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(next));
+    } catch {}
+
+    if (firebaseConfig.enabled) {
+      updateStockAlertStatusInFirebase(firebaseConfig, alertId, status).catch(() => {});
+    }
+    showToast(status === 'notified' ? 'Клієнта позначено як сповіщеного' : 'Статус оновлено', 'info');
+  };
+
+  const deleteStockAlert = (alertId: string) => {
+    const next = stockAlerts.filter(a => a.id !== alertId);
+    setStockAlerts(next);
+    try {
+      localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(next));
+    } catch {}
+
+    if (firebaseConfig.enabled) {
+      deleteStockAlertFromFirebase(firebaseConfig, alertId).catch(() => {});
+    }
+    showToast('Запит на сповіщення видалено', 'info');
+  };
+
   // Site Settings
   const updateSiteSettings = (settings: SiteSettings) => {
     setSiteSettings(settings);
@@ -2170,6 +2299,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteReview,
         voteHelpfulReview,
         resetDefaultReviews,
+        stockAlerts,
+        stockAlertModalProduct,
+        openStockAlertModal,
+        closeStockAlertModal,
+        addStockAlert,
+        updateStockAlertStatus,
+        deleteStockAlert,
         updateSiteSettings,
         updateSiteFeatures,
         updateHeaderDesign,

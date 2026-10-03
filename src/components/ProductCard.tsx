@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Product } from '../types/store';
 import { useStore } from '../context/StoreContext';
 import { getProductBrand } from '../utils/brandHelper';
-import { ShoppingBag, Heart, Droplets, Zap, Check, AlertTriangle, Flame } from 'lucide-react';
+import { ShoppingBag, Heart, Droplets, Zap, Check, AlertTriangle, Flame, Bell } from 'lucide-react';
 import { getSafeImageUrl } from '../utils/assetImages';
 import { formatUnit, formatPriceUnit } from '../utils/unitFormatter';
 
@@ -11,7 +11,7 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
-  const { addToCart, toggleWishlist, isInWishlist, setQuickViewProduct, siteSettings } = useStore();
+  const { addToCart, toggleWishlist, isInWishlist, setQuickViewProduct, siteSettings, openStockAlertModal } = useStore();
   const [imageError, setImageError] = useState(false);
   const [isAddedRecently, setIsAddedRecently] = useState(false);
 
@@ -127,10 +127,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           {/* Stock Status */}
           <div className="text-[11px] font-semibold mb-3">
             {isOutOfStock ? (
-              <span className="inline-flex items-center gap-1.5 text-slate-400 font-medium text-[11px]">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                <span>Закінчився на складі</span>
-              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openStockAlertModal(product);
+                }}
+                className="inline-flex items-center gap-1.5 text-amber-800 hover:text-amber-950 font-bold text-[11px] group/alert cursor-pointer transition-colors"
+                title="Натисніть, щоб повідомити вас при надходженні"
+              >
+                <Bell className="w-3 h-3 text-amber-600 group-hover/alert:scale-110 transition-transform" />
+                <span className="underline decoration-amber-400 decoration-1 underline-offset-2">Повідомити про наявність</span>
+              </button>
             ) : showLowStockBadge ? (
               <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-900 text-[11px] font-bold">
                 <span className="relative flex h-2 w-2">
@@ -165,31 +173,45 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           </div>
 
           <div className="relative inline-flex items-center">
-            <button
-              onClick={handleAddToCart}
-              disabled={isOutOfStock}
-              className={`relative px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm ${
-                isOutOfStock 
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-                  : isAddedRecently
-                  ? 'bg-emerald-600 text-white shadow-emerald-600/30'
-                  : 'bg-red-600 hover:bg-red-700 text-white btn-pulse-red'
-              }`}
-              title="Додати в кошик"
-              aria-label="Купити"
-            >
-              {isAddedRecently ? (
-                <>
-                  <Check className="w-4 h-4 stroke-[2.5]" />
-                  <span className="text-xs">В кошику</span>
-                </>
-              ) : (
-                <>
-                  <ShoppingBag className="w-4 h-4 stroke-[2]" />
-                  <span>Купити</span>
-                </>
-              )}
-            </button>
+            {isOutOfStock ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openStockAlertModal(product);
+                }}
+                className="relative px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-xs bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-400 cursor-pointer"
+                title="Повідомити, коли з'явиться"
+                aria-label="Повідомити про наявність"
+              >
+                <Bell className="w-3.5 h-3.5 text-slate-950 stroke-[2.2]" />
+                <span className="hidden sm:inline">Повідомити</span>
+                <span className="sm:hidden">Чекати</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleAddToCart}
+                className={`relative px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm ${
+                  isAddedRecently
+                    ? 'bg-emerald-600 text-white shadow-emerald-600/30'
+                    : 'bg-red-600 hover:bg-red-700 text-white btn-pulse-red'
+                }`}
+                title="Додати в кошик"
+                aria-label="Купити"
+              >
+                {isAddedRecently ? (
+                  <>
+                    <Check className="w-4 h-4 stroke-[2.5]" />
+                    <span className="text-xs">В кошику</span>
+                  </>
+                ) : (
+                  <>
+                    <ShoppingBag className="w-4 h-4 stroke-[2]" />
+                    <span>Купити</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

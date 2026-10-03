@@ -117,6 +117,20 @@ export interface SiteSettings {
   features: SiteFeatures;
 }
 
+export interface StockAlertRequest {
+  id: string;
+  productId: string;
+  productName: string;
+  productSku?: string;
+  productImage?: string;
+  productPrice?: number;
+  phone: string;
+  name?: string;
+  createdAt: string;
+  status: 'pending' | 'notified' | 'cancelled';
+  notifiedAt?: string;
+}
+
 export interface ProductReview {
   id: string;
   productId?: string;

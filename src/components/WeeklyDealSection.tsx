@@ -10,7 +10,8 @@ import {
   ShieldCheck, 
   Truck, 
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Bell
 } from 'lucide-react';
 import { getSafeImageUrl, ASSET_IMAGES } from '../utils/assetImages';
 import { formatPriceUnit } from '../utils/unitFormatter';
@@ -21,7 +22,8 @@ export const WeeklyDealSection: React.FC = () => {
     products, 
     addToCart, 
     setIsCartDrawerOpen, 
-    setQuickViewProduct 
+    setQuickViewProduct,
+    openStockAlertModal 
   } = useStore();
 
   const [timeLeft, setTimeLeft] = useState({
@@ -244,30 +246,41 @@ export const WeeklyDealSection: React.FC = () => {
                 </div>
               </div>
 
-              {/* Pulsing Red Buy Button */}
+              {/* Buy Button or Notify Button */}
               <div className="relative inline-flex items-center">
-                <button
-                  onClick={handleBuy}
-                  className={`relative px-6 sm:px-8 py-3 rounded-2xl font-black text-sm sm:text-base text-white flex items-center justify-center gap-2.5 transition-all active:scale-95 shadow-md ${
-                    isAddedRecently
-                      ? 'bg-emerald-600 text-white shadow-emerald-600/40'
-                      : 'bg-red-600 hover:bg-red-700 btn-pulse-red'
-                  }`}
-                  aria-label="Купити по акції"
-                >
-                  {isAddedRecently ? (
-                    <>
-                      <Check className="w-5 h-5 stroke-[2.5]" />
-                      <span>Додано в кошик!</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShoppingBag className="w-5 h-5 stroke-[2]" />
-                      <span>Купити по акції</span>
-                      <ArrowRight className="w-4 h-4 ml-0.5" />
-                    </>
-                  )}
-                </button>
+                {promoProduct.stock <= 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => openStockAlertModal(promoProduct)}
+                    className="relative px-6 sm:px-8 py-3 rounded-2xl font-black text-sm sm:text-base text-slate-950 bg-amber-500 hover:bg-amber-600 flex items-center justify-center gap-2.5 transition-all active:scale-95 shadow-md border border-amber-400 cursor-pointer"
+                  >
+                    <Bell className="w-5 h-5 stroke-[2.2] text-slate-950" />
+                    <span>Повідомити про наявність</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleBuy}
+                    className={`relative px-6 sm:px-8 py-3 rounded-2xl font-black text-sm sm:text-base text-white flex items-center justify-center gap-2.5 transition-all active:scale-95 shadow-md ${
+                      isAddedRecently
+                        ? 'bg-emerald-600 text-white shadow-emerald-600/40'
+                        : 'bg-red-600 hover:bg-red-700 btn-pulse-red'
+                    }`}
+                    aria-label="Купити по акції"
+                  >
+                    {isAddedRecently ? (
+                      <>
+                        <Check className="w-5 h-5 stroke-[2.5]" />
+                        <span>Додано в кошик!</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShoppingBag className="w-5 h-5 stroke-[2]" />
+                        <span>Купити по акції</span>
+                        <ArrowRight className="w-4 h-4 ml-0.5" />
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
             </div>
