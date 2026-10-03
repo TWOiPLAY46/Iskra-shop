@@ -741,7 +741,7 @@ export const initialSiteSettings: SiteSettings = {
   smsGateway: "none",
   smsApiKey: "",
   smsSenderName: "ISKRA",
-  smsStockAlertTemplate: "Вітаємо! Товар «{product}» знову в наявності в магазині ISKRA ({price} грн). Замовляйте на сайті або телефонуйте!",
+  smsStockAlertTemplate: "⚡ Магазин ISKRA\nВітаємо! Товар «{product}» знову в наявності ({price} грн). Замовляйте на сайті або телефонуйте!",
   features: {
     ordersEnabled: true,
     loyaltyEnabled: true,

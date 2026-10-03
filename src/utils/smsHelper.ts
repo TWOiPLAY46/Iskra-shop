@@ -87,11 +87,23 @@ export function formatStockAlertSms(
   clientName?: string
 ): string {
   const defaultTemplate = 
-    "Вітаємо! Товар «{product}» знову в наявності в магазині ISKRA ({price} грн). Замовляйте на сайті або телефонуйте!";
+    "⚡ Магазин ISKRA\nВітаємо! Товар «{product}» знову в наявності ({price} грн). Замовляйте на сайті або телефонуйте!";
 
-  let text = template?.trim() ? template : defaultTemplate;
+  let text = template?.trim();
+
+  // If no template or legacy template without header
+  if (!text || text === "Вітаємо! Товар «{product}» знову в наявності в магазині ISKRA ({price} грн). Замовляйте на сайті або телефонуйте!") {
+    text = defaultTemplate;
+  } else if (!text.includes('ISKRA') && !text.includes('Магазин')) {
+    text = `⚡ Магазин ISKRA\n${text}`;
+  }
+
   text = text.replace(/{product}/g, productName);
-  text = text.replace(/{price}/g, price ? `${price}` : '');
+  if (price && price > 0) {
+    text = text.replace(/{price}/g, `${price}`);
+  } else {
+    text = text.replace(/\s*\({price}\s*грн\)/g, '').replace(/{price}/g, '');
+  }
   text = text.replace(/{name}/g, clientName?.trim() ? clientName : 'покупець');
   text = text.replace(/{phone}/g, '067 000 00 00');
   return text;

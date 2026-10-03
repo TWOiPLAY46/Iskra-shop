@@ -6129,10 +6129,10 @@ export const AdminPanel: React.FC = () => {
                   Шаблон SMS про появу товару
                 </label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={settingsForm.smsStockAlertTemplate || ''}
                   onChange={(e) => setSettingsForm({ ...settingsForm, smsStockAlertTemplate: e.target.value })}
-                  placeholder="Вітаємо! Товар «{product}» знову в наявності в магазині ISKRA ({price} грн). Замовляйте на сайті або телефонуйте!"
+                  placeholder={`⚡ Магазин ISKRA\nВітаємо! Товар «{product}» знову в наявності ({price} грн). Замовляйте на сайті або телефонуйте!`}
                   className="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-white outline-none focus:border-blue-600"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
