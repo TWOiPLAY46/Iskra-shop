@@ -70,8 +70,17 @@ import {
   Clipboard,
   Bell,
   Phone,
+  Copy,
+  MessageCircle,
   X
 } from 'lucide-react';
+import { 
+  generateSmsUrl, 
+  generateViberUrl, 
+  generateTelegramUrl,
+  formatStockAlertSms, 
+  sendSmsViaGateway 
+} from '../utils/smsHelper';
 import { Order, OrderStatus, Product, ProductBadge, ProductReview, StockAlertRequest, FirebaseConnectionConfig } from '../types/store';
 import { LiveTrackingWidget } from './LiveTrackingWidget';
 import { UkrSkladSyncModal } from './UkrSkladSyncModal';
@@ -645,6 +654,9 @@ export const AdminPanel: React.FC = () => {
   const [stockAlertSearch, setStockAlertSearch] = useState('');
   const [stockAlertStatusFilter, setStockAlertStatusFilter] = useState<'all' | 'pending' | 'notified'>('all');
   const [stockAlertFilterProduct, setStockAlertFilterProduct] = useState<string>('');
+  const [stockAlertInStockOnly, setStockAlertInStockOnly] = useState(false);
+  const [smsModalAlert, setSmsModalAlert] = useState<{ alert: StockAlertRequest; text: string } | null>(null);
+  const [isSendingGatewaySms, setIsSendingGatewaySms] = useState(false);
 
   // Search & Filter states
   const [productSearch, setProductSearch] = useState('');
@@ -1850,7 +1862,7 @@ export const AdminPanel: React.FC = () => {
           }`}
         >
           <Settings className="w-4 h-4" />
-          <span>Контакти & Bot</span>
+          <span>Контакти, Bot & SMS</span>
         </button>
       </div>
 
@@ -4438,12 +4450,21 @@ export const AdminPanel: React.FC = () => {
 
       {/* TAB: STOCK AVAILABILITY ALERTS (ОЧІКУЮТЬ ТОВАР) */}
       {activeTab === 'stock_alerts' && (() => {
+        const readyToNotifyCount = stockAlerts.filter((a) => {
+          const p = products.find((prod) => prod.id === a.productId);
+          return a.status === 'pending' && p && p.stock > 0;
+        }).length;
+
         const filteredAlerts = stockAlerts.filter((alert) => {
           if (stockAlertStatusFilter !== 'all' && alert.status !== stockAlertStatusFilter) {
             return false;
           }
           if (stockAlertFilterProduct && !alert.productName.toLowerCase().includes(stockAlertFilterProduct.toLowerCase())) {
             return false;
+          }
+          if (stockAlertInStockOnly) {
+            const targetProd = products.find((p) => p.id === alert.productId);
+            if (!targetProd || targetProd.stock <= 0) return false;
           }
           if (stockAlertSearch) {
             const q = stockAlertSearch.toLowerCase().trim();
@@ -4461,6 +4482,39 @@ export const AdminPanel: React.FC = () => {
 
         return (
           <div className="space-y-6 animate-in fade-in duration-150">
+            {/* Ready to notify alert banner */}
+            {readyToNotifyCount > 0 && (
+              <div className="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 shadow-inner">
+                    <Sparkles className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm sm:text-base font-black flex items-center gap-2">
+                      <span>🎉 Товари вже на складі!</span>
+                      <span className="px-2 py-0.5 rounded-full bg-white text-emerald-900 text-xs font-black">
+                        {readyToNotifyCount} очікують
+                      </span>
+                    </h4>
+                    <p className="text-xs text-emerald-100 mt-0.5">
+                      Партія товару надійшла (залишок {'>'} 0). Надішліть покупцям швидке SMS або напишіть у Viber в 1 клік!
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStockAlertInStockOnly(!stockAlertInStockOnly)}
+                  className={`px-4 py-2 font-bold text-xs rounded-xl shadow-xs transition-all shrink-0 cursor-pointer ${
+                    stockAlertInStockOnly 
+                      ? 'bg-emerald-950 text-white hover:bg-black' 
+                      : 'bg-white text-emerald-900 hover:bg-emerald-50 active:scale-98'
+                  }`}
+                >
+                  {stockAlertInStockOnly ? 'Показати всі запити' : `Показати готові до SMS (${readyToNotifyCount})`}
+                </button>
+              </div>
+            )}
+
             {/* Header & Stats Banner */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
@@ -4485,18 +4539,43 @@ export const AdminPanel: React.FC = () => {
                   </div>
                 </div>
 
-                {stockAlertFilterProduct && (
-                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl text-xs text-amber-900">
-                    <span>Фільтр товару: <b>{stockAlertFilterProduct}</b></span>
-                    <button
-                      type="button"
-                      onClick={() => setStockAlertFilterProduct('')}
-                      className="text-amber-700 hover:text-amber-950 font-bold ml-1 cursor-pointer"
-                    >
-                      × Скинути
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {stockAlertInStockOnly && (
+                    <div className="flex items-center gap-1.5 bg-emerald-100 text-emerald-900 px-3 py-1.5 rounded-xl text-xs font-bold border border-emerald-300">
+                      <span>Тільки ті, що вже на складі</span>
+                      <button
+                        type="button"
+                        onClick={() => setStockAlertInStockOnly(false)}
+                        className="hover:text-emerald-950 ml-1 cursor-pointer"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+
+                  {stockAlertFilterProduct && (
+                    <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl text-xs text-amber-900">
+                      <span>Фільтр товару: <b>{stockAlertFilterProduct}</b></span>
+                      <button
+                        type="button"
+                        onClick={() => setStockAlertFilterProduct('')}
+                        className="text-amber-700 hover:text-amber-950 font-bold ml-1 cursor-pointer"
+                      >
+                        × Скинути
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange('settings')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-bold border border-blue-200 transition-colors cursor-pointer shadow-2xs"
+                    title="Перейти до налаштувань SMS-провайдера та шаблону повідомлення"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
+                    <span>⚙️ Налаштування SMS & TurboSMS</span>
+                  </button>
+                </div>
               </div>
 
               {/* 3 Metric Cards */}
@@ -4673,8 +4752,29 @@ export const AdminPanel: React.FC = () => {
 
                             <td className="py-3 px-4">
                               <div>
-                                <div className="font-bold text-slate-900 flex items-center gap-1">
+                                <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                                   <span>{alert.name || 'Покупець'}</span>
+                                  {alert.channel === 'telegram' && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[10px] font-bold">
+                                      <span>✈️ Telegram</span>
+                                      {alert.telegramUsername && <span className="font-mono">@{alert.telegramUsername.replace('@', '')}</span>}
+                                    </span>
+                                  )}
+                                  {alert.channel === 'viber' && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
+                                      <span>💬 Viber</span>
+                                    </span>
+                                  )}
+                                  {alert.channel === 'sms' && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
+                                      <span>✉️ SMS</span>
+                                    </span>
+                                  )}
+                                  {alert.channel === 'call' && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
+                                      <span>📞 Дзвінок</span>
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <a
@@ -4714,14 +4814,89 @@ export const AdminPanel: React.FC = () => {
                             </td>
 
                             <td className="py-3 px-4 text-right whitespace-nowrap space-x-1.5">
-                              <a
-                                href={`tel:${alert.phone}`}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-2xs transition-colors"
-                                title="Зателефонувати клієнту"
-                              >
-                                <Phone className="w-3 h-3" />
-                                <span className="hidden sm:inline">Дзвінок</span>
-                              </a>
+                              {/* 1-Click Notifications Buttons */}
+                              {(() => {
+                                const smsMessage = formatStockAlertSms(
+                                  settingsForm.smsStockAlertTemplate,
+                                  alert.productName,
+                                  alert.productPrice,
+                                  alert.name
+                                );
+                                const smsUrl = generateSmsUrl(alert.phone, smsMessage);
+                                const viberUrl = generateViberUrl(alert.phone);
+                                const tgUrl = generateTelegramUrl(alert.phone, smsMessage, alert.telegramUsername);
+
+                                return (
+                                  <>
+                                    <a
+                                      href={smsUrl}
+                                      onClick={() => {
+                                        if (alert.status === 'pending') {
+                                          updateStockAlertStatus(alert.id, 'notified');
+                                        }
+                                        showToast('Відкрито додаток SMS з готовим текстом', 'info');
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-colors shadow-2xs"
+                                      title="Надіслати SMS (відкриє SMS на телефоні/ПК з готовим текстом)"
+                                    >
+                                      <MessageSquare className="w-3 h-3 text-blue-600" />
+                                      <span>SMS</span>
+                                    </a>
+
+                                    <a
+                                      href={viberUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => {
+                                        if (alert.status === 'pending') {
+                                          updateStockAlertStatus(alert.id, 'notified');
+                                        }
+                                        showToast('Відкрито діалог у Viber', 'info');
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl border border-purple-200 transition-colors shadow-2xs"
+                                      title="Написати клієнту у Viber"
+                                    >
+                                      <MessageCircle className="w-3 h-3 text-purple-600" />
+                                      <span className="hidden sm:inline">Viber</span>
+                                    </a>
+
+                                    <a
+                                      href={tgUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => {
+                                        if (alert.status === 'pending') {
+                                          updateStockAlertStatus(alert.id, 'notified');
+                                        }
+                                        showToast('Відкрито Telegram для зв\'язку з клієнтом', 'info');
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs rounded-xl border border-sky-200 transition-colors shadow-2xs"
+                                      title="Написати клієнту в Telegram"
+                                    >
+                                      <Send className="w-3 h-3 text-sky-600" />
+                                      <span className="hidden sm:inline">Telegram</span>
+                                    </a>
+
+                                    <a
+                                      href={`tel:${alert.phone}`}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-2xs transition-colors"
+                                      title="Зателефонувати клієнту"
+                                    >
+                                      <Phone className="w-3 h-3" />
+                                      <span className="hidden sm:inline">Дзвінок</span>
+                                    </a>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setSmsModalAlert({ alert, text: smsMessage })}
+                                      className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                      title="Переглянути та відредагувати текст SMS / Telegram / Viber"
+                                    >
+                                      <Send className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                );
+                              })()}
 
                               {alert.status === 'pending' ? (
                                 <button
@@ -4760,6 +4935,167 @@ export const AdminPanel: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* SMS Preview / Send Modal */}
+            {smsModalAlert && (
+              <div 
+                className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in"
+                onClick={() => setSmsModalAlert(null)}
+              >
+                <div 
+                  className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-150"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                        <MessageSquare className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm">SMS-сповіщення клієнта</h4>
+                        <p className="text-[11px] text-blue-100">Повідомлення про появу товару на складі</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSmsModalAlert(null)}
+                      className="p-1.5 rounded-full hover:bg-white/20 text-white transition-colors cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="p-5 space-y-4 text-xs">
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                      <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                        <span>Отримувач:</span>
+                        <span className="font-bold text-slate-800">{smsModalAlert.alert.name || 'Покупець'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                        <span>Телефон:</span>
+                        <span className="font-mono font-bold text-blue-700">{smsModalAlert.alert.phone}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                        <span>Товар:</span>
+                        <span className="font-semibold text-slate-800 truncate max-w-[260px]">{smsModalAlert.alert.productName}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Текст повідомлення (можна редагувати):
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={smsModalAlert.text}
+                        onChange={(e) => setSmsModalAlert({ ...smsModalAlert, text: e.target.value })}
+                        className="w-full p-3 border border-slate-300 rounded-xl bg-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-xs"
+                      />
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1">
+                        <span>Символів: {smsModalAlert.text.length}</span>
+                        <span>Відправник: {settingsForm.smsSenderName || 'ISKRA'}</span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="space-y-2 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <a
+                          href={generateSmsUrl(smsModalAlert.alert.phone, smsModalAlert.text)}
+                          onClick={() => {
+                            updateStockAlertStatus(smsModalAlert.alert.id, 'notified');
+                            showToast('Відкрито додаток SMS. Клієнта позначено як сповіщеного!', 'success');
+                            setSmsModalAlert(null);
+                          }}
+                          className="py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer text-center"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>В SMS</span>
+                        </a>
+
+                        <a
+                          href={generateViberUrl(smsModalAlert.alert.phone)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            updateStockAlertStatus(smsModalAlert.alert.id, 'notified');
+                            showToast('Відкрито чат у Viber. Клієнта позначено як сповіщеного!', 'info');
+                            setSmsModalAlert(null);
+                          }}
+                          className="py-2.5 px-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer text-center"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>У Viber</span>
+                        </a>
+
+                        <a
+                          href={generateTelegramUrl(smsModalAlert.alert.phone, smsModalAlert.text, smsModalAlert.alert.telegramUsername)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            updateStockAlertStatus(smsModalAlert.alert.id, 'notified');
+                            showToast('Відкрито Telegram. Клієнта позначено як сповіщеного!', 'info');
+                            setSmsModalAlert(null);
+                          }}
+                          className="py-2.5 px-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer text-center"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>У Telegram</span>
+                        </a>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(smsModalAlert.text);
+                            showToast('Текст SMS скопійовано в буфер обміну', 'info');
+                          }}
+                          className="flex-1 py-2 px-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Скопіювати текст</span>
+                        </button>
+
+                        {settingsForm.smsGateway && settingsForm.smsGateway !== 'none' && settingsForm.smsApiKey && (
+                          <button
+                            type="button"
+                            disabled={isSendingGatewaySms}
+                            onClick={async () => {
+                              setIsSendingGatewaySms(true);
+                              try {
+                                const res = await sendSmsViaGateway({
+                                  phone: smsModalAlert.alert.phone,
+                                  text: smsModalAlert.text,
+                                  gateway: settingsForm.smsGateway,
+                                  apiKey: settingsForm.smsApiKey,
+                                  senderName: settingsForm.smsSenderName
+                                });
+                                if (res.success) {
+                                  updateStockAlertStatus(smsModalAlert.alert.id, 'notified');
+                                  showToast(res.message, 'success');
+                                  setSmsModalAlert(null);
+                                } else {
+                                  showToast(res.message, 'error');
+                                }
+                              } catch {
+                                showToast('Помилка відправлення через шлюз', 'error');
+                              } finally {
+                                setIsSendingGatewaySms(false);
+                              }
+                            }}
+                            className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>{isSendingGatewaySms ? 'Відправка...' : `Через ${settingsForm.smsGateway.toUpperCase()}`}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -5440,11 +5776,104 @@ export const AdminPanel: React.FC = () => {
               </button>
             </div>
 
+            {/* SMS Gateway & Notifications Configuration */}
+            <div className="p-5 rounded-2xl border border-blue-200 bg-blue-50/50 space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                  <MessageSquare className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <span>SMS-сповіщення клієнтів (TurboSMS, SMS-Fly, AlphaSMS, 1-клік)</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                      Активно
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Автоматичні та 1-клік сповіщення для покупців, які очікують на появу товару
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-700 bg-white/90 p-3.5 rounded-xl border border-blue-200/80 space-y-2">
+                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Як працює відправка SMS в магазині:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-slate-600 text-[11px]">
+                  <li><b>1-клік SMS & Viber (безкоштовно):</b> у вкладці «Очікування товару» натисніть кнопку «SMS» або «Viber» — на вашому телефоні або ПК одразу відкриється додаток з уже заповненим текстом і номером клієнта. Працює одразу без жодних платних підписок.</li>
+                  <li><b>SMS-шлюз (TurboSMS, SMS-Fly, AlphaSMS):</b> якщо підключити API ключ українського оператора розсилок, повідомлення можна відправляти з офіційним альфа-іменем (наприклад «ISKRA»).</li>
+                </ul>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    SMS-провайдер
+                  </label>
+                  <select
+                    value={settingsForm.smsGateway || 'none'}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, smsGateway: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white outline-none focus:border-blue-600 font-medium"
+                  >
+                    <option value="none">Швидкі кнопки 1-клік SMS & Viber (Рекомендовано, безкоштовно)</option>
+                    <option value="turbosms">TurboSMS (api.turbosms.ua)</option>
+                    <option value="smsfly">SMS-Fly (sms-fly.ua)</option>
+                    <option value="alphasms">AlphaSMS (alphasms.ua)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Підпис відправника (Альфа-ім'я)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="наприклад: ISKRA"
+                    value={settingsForm.smsSenderName || ''}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, smsSenderName: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white outline-none focus:border-blue-600"
+                  />
+                </div>
+              </div>
+
+              {settingsForm.smsGateway && settingsForm.smsGateway !== 'none' && (
+                <div className="animate-in fade-in">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    API Ключ (Токен) {settingsForm.smsGateway.toUpperCase()}
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={`Вставте API ключ від ${settingsForm.smsGateway}`}
+                    value={settingsForm.smsApiKey || ''}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, smsApiKey: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs bg-white outline-none focus:border-blue-600"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Шаблон SMS про появу товару
+                </label>
+                <textarea
+                  rows={2}
+                  value={settingsForm.smsStockAlertTemplate || ''}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, smsStockAlertTemplate: e.target.value })}
+                  placeholder="Вітаємо! Товар «{product}» знову в наявності в магазині ISKRA ({price} грн). Замовляйте на сайті або телефонуйте!"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-white outline-none focus:border-blue-600"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Змінні: <b>{'{product}'}</b> — назва товару, <b>{'{price}'}</b> — ціна, <b>{'{name}'}</b> — ім'я покупця.
+                </p>
+              </div>
+            </div>
+
             <button
               type="submit"
-              className="px-6 py-2.5 bg-orange-600 text-white font-bold rounded-xl"
+              className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl transition-all shadow-sm cursor-pointer"
             >
-              Зберегти всі налаштування
+              Зберегти всі налаштування (Контакти, Bot & SMS)
             </button>
           </div>
         </form>
@@ -5644,7 +6073,7 @@ export const AdminPanel: React.FC = () => {
 
           <button
             type="submit"
-            className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm"
+            className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm cursor-pointer"
           >
             Зберегти налаштування доставки
           </button>

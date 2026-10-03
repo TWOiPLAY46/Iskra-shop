@@ -114,6 +114,11 @@ export interface SiteSettings {
   companyEdrpou?: string;
   companyIban?: string;
   companyBank?: string;
+  // SMS Notification Gateway (TurboSMS, SMS-Fly, AlphaSMS, manual)
+  smsGateway?: 'none' | 'turbosms' | 'smsfly' | 'alphasms';
+  smsApiKey?: string;
+  smsSenderName?: string;
+  smsStockAlertTemplate?: string;
   features: SiteFeatures;
 }
 
@@ -126,6 +131,8 @@ export interface StockAlertRequest {
   productPrice?: number;
   phone: string;
   name?: string;
+  channel?: 'sms' | 'viber' | 'telegram' | 'call';
+  telegramUsername?: string;
   createdAt: string;
   status: 'pending' | 'notified' | 'cancelled';
   notifiedAt?: string;

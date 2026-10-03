@@ -738,6 +738,10 @@ export const initialSiteSettings: SiteSettings = {
   companyEdrpou: "43928174",
   companyIban: "UA213052990000026007894561230",
   companyBank: "АТ КБ «ПриватБанк» (МФО 305299)",
+  smsGateway: "none",
+  smsApiKey: "",
+  smsSenderName: "ISKRA",
+  smsStockAlertTemplate: "Вітаємо! Товар «{product}» знову в наявності в магазині ISKRA ({price} грн). Замовляйте на сайті або телефонуйте!",
   features: {
     ordersEnabled: true,
     loyaltyEnabled: true,

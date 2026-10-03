@@ -170,7 +170,9 @@ interface StoreContextType {
     name?: string,
     sku?: string,
     image?: string,
-    price?: number
+    price?: number,
+    channel?: 'sms' | 'viber' | 'telegram' | 'call',
+    telegramUsername?: string
   ) => Promise<boolean>;
   updateStockAlertStatus: (alertId: string, status: 'pending' | 'notified' | 'cancelled') => void;
   deleteStockAlert: (alertId: string) => void;
@@ -406,7 +408,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed)) {
+            // Filter out any demo / test alerts
+            const cleaned = parsed.filter(
+              (a: StockAlertRequest) =>
+                a &&
+                a.id &&
+                !a.id.startsWith('alert_demo_') &&
+                a.phone !== '+380679876543' &&
+                a.phone !== '+380971234567'
+            );
+            if (cleaned.length !== parsed.length) {
+              localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(cleaned));
+            }
+            return cleaned;
+          }
         } catch {}
       }
     }
@@ -1512,11 +1528,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateProductStock = (productId: string, newStock: number) => {
-    const next = products.map((p) => (p.id === productId ? { ...p, stock: Math.max(0, newStock) } : p));
+    const prevProduct = products.find((p) => p.id === productId);
+    const safeStock = Math.max(0, newStock);
+    const next = products.map((p) => (p.id === productId ? { ...p, stock: safeStock } : p));
     setProducts(next);
     localStorage.setItem('iskra_products_react_v4', JSON.stringify(next));
     if (firebaseConfig.enabled) {
       pushStoreToFirebase(firebaseConfig, { products: next, lastSyncTimestamp: Date.now() });
+    }
+
+    // Check if restocked product has waiting customers
+    if (prevProduct && prevProduct.stock <= 0 && safeStock > 0) {
+      const waiting = stockAlerts.filter((a) => a.productId === productId && a.status === 'pending');
+      if (waiting.length > 0) {
+        showToast(
+          `🔔 «${prevProduct.name.slice(0, 30)}...» на складі (${safeStock} шт)! Чекають: ${waiting.length} покупців`,
+          'info'
+        );
+      }
     }
   };
 
@@ -2049,7 +2078,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     name?: string,
     sku?: string,
     image?: string,
-    price?: number
+    price?: number,
+    channel?: 'sms' | 'viber' | 'telegram' | 'call',
+    telegramUsername?: string
   ): Promise<boolean> => {
     const cleanPhone = phone.replace(/[^0-9+]/g, '');
     const newAlert: StockAlertRequest = {
@@ -2061,6 +2092,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       productPrice: price,
       phone: cleanPhone,
       name: name?.trim() || 'Покупець',
+      channel: channel || 'sms',
+      telegramUsername: telegramUsername?.trim() || undefined,
       createdAt: new Date().toISOString(),
       status: 'pending'
     };
@@ -2078,16 +2111,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Telegram notification to store owner/manager if botToken & chatId configured
     if (siteSettings.botToken && siteSettings.chatId) {
-      const msg = `🔔 *Новий запит на сповіщення про наявність!*\n\n📦 *Товар:* ${productName}\n${sku ? `🏷 *Артикул:* ${sku}\n` : ''}${price ? `💰 *Ціна:* ${price} грн\n` : ''}👤 *Клієнт:* ${name?.trim() || 'Не вказано'}\n📞 *Телефон:* ${cleanPhone}\n⏰ *Час:* ${new Date().toLocaleString('uk-UA')}`;
-      fetch(`https://api.telegram.org/bot${siteSettings.botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: siteSettings.chatId,
-          text: msg,
-          parse_mode: 'Markdown'
-        })
-      }).catch(() => {});
+      const channelLabel = {
+        viber: '💬 Viber',
+        telegram: '✈️ Telegram' + (telegramUsername ? ` (@${telegramUsername.replace('@', '')})` : ''),
+        sms: '✉️ SMS',
+        call: '📞 Дзвінок менеджера'
+      }[channel || 'sms'] || 'SMS / Месенджер';
+
+      const msg = `🔔 *Новий запит на сповіщення про наявність!*\n\n📦 *Товар:* ${productName}\n${sku ? `🏷 *Артикул:* ${sku}\n` : ''}${price ? `💰 *Ціна:* ${price} грн\n` : ''}👤 *Клієнт:* ${name?.trim() || 'Покупець'}\n📞 *Телефон:* ${cleanPhone}\n📲 *Бажаний канал:* ${channelLabel}\n⏰ *Час:* ${new Date().toLocaleString('uk-UA')}`;
+      sendTelegramAlert(siteSettings.botToken, siteSettings.chatId, msg).catch(() => {});
     }
 
     showToast('Дякуємо! Ми надішлемо вам сповіщення, щойно товар з\'явиться на складі.', 'success');
