@@ -725,6 +725,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (cloudData.siteSettings) setSiteSettings((prev) => ({ ...prev, ...cloudData.siteSettings }));
           if (cloudData.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...cloudData.headerDesign }));
           if (cloudData.weeklyDeal) setWeeklyDeal((prev) => ({ ...prev, ...cloudData.weeklyDeal }));
+
+          // Bind and sync stock alerts from database
+          const rawCloudAlerts = cloudData.stockAlerts;
+          const cloudAlerts = Array.isArray(rawCloudAlerts)
+            ? rawCloudAlerts
+            : (rawCloudAlerts && typeof rawCloudAlerts === 'object' ? Object.values(rawCloudAlerts) : null);
+          if (cloudAlerts && cloudAlerts.length > 0) {
+            const cleanAlerts = (cloudAlerts as StockAlertRequest[]).filter(a => a && a.id && a.phone);
+            setStockAlerts(cleanAlerts);
+            localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(cleanAlerts));
+          } else {
+            // Also query direct fetchStockAlertsFromFirebase (RTDB + Firestore)
+            fetchStockAlertsFromFirebase(firebaseConfig).then((alerts) => {
+              if (alerts && alerts.length > 0) {
+                const cleanAlerts = (alerts as StockAlertRequest[]).filter(a => a && a.id && a.phone);
+                setStockAlerts(cleanAlerts);
+                localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(cleanAlerts));
+              }
+            }).catch(() => {});
+          }
         } else if (isFirstLoad.current) {
           isFirstLoad.current = false;
           // Seed the database so Firebase console displays everything
@@ -734,6 +754,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             orders,
             clients,
             reviews,
+            stockAlerts,
             siteSettings,
             headerDesign: cleanHeaderDesign(headerDesign),
             weeklyDeal,
@@ -803,6 +824,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (data.siteSettings) setSiteSettings((prev) => ({ ...prev, ...data.siteSettings }));
         if (data.headerDesign) setHeaderDesign((prev) => cleanHeaderDesign({ ...prev, ...data.headerDesign }));
         if (data.weeklyDeal) setWeeklyDeal((prev) => ({ ...prev, ...data.weeklyDeal }));
+
+        // Real-time stock alerts update from cloud
+        const rawLiveAlerts = data.stockAlerts;
+        const liveAlerts = Array.isArray(rawLiveAlerts) 
+          ? rawLiveAlerts 
+          : (rawLiveAlerts && typeof rawLiveAlerts === 'object' ? Object.values(rawLiveAlerts) : null);
+        if (liveAlerts !== null && liveAlerts !== undefined) {
+          const cleanAlerts = (liveAlerts as StockAlertRequest[]).filter(a => a && a.id && a.phone);
+          setStockAlerts(cleanAlerts);
+          localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(cleanAlerts));
+        }
       }
     });
 
@@ -857,8 +889,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       orders,
       clients,
       reviews,
+      stockAlerts,
       siteSettings,
       headerDesign,
+      weeklyDeal,
       lastSyncTimestamp: Date.now()
     };
     const success = await pushStoreToFirebase(firebaseConfig, payload);
@@ -892,6 +926,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (data.reviews && Array.isArray(data.reviews)) setReviews(data.reviews);
       if (data.siteSettings) setSiteSettings((prev) => ({ ...prev, ...data.siteSettings }));
       if (data.headerDesign) setHeaderDesign((prev) => ({ ...prev, ...data.headerDesign }));
+      if (data.weeklyDeal) setWeeklyDeal((prev) => ({ ...prev, ...data.weeklyDeal }));
+      
+      const rawAlerts = data.stockAlerts;
+      const fetchedAlerts = Array.isArray(rawAlerts)
+        ? rawAlerts
+        : (rawAlerts && typeof rawAlerts === 'object' ? Object.values(rawAlerts) : null);
+      if (fetchedAlerts && fetchedAlerts.length > 0) {
+        const cleanAlerts = (fetchedAlerts as StockAlertRequest[]).filter(a => a && a.id && a.phone);
+        setStockAlerts(cleanAlerts);
+        localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(cleanAlerts));
+      }
+
       showToast('Дані успішно завантажено з хмарної бази даних!', 'success');
       return true;
     } else {
@@ -910,8 +956,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       orders,
       clients,
       reviews,
+      stockAlerts,
       siteSettings,
       headerDesign,
+      weeklyDeal,
       firebaseConfig
     };
     return JSON.stringify(backup, null, 2);
@@ -925,8 +973,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (parsed.orders && Array.isArray(parsed.orders)) setOrders(parsed.orders);
       if (parsed.clients) setClients(parsed.clients);
       if (parsed.reviews && Array.isArray(parsed.reviews)) setReviews(parsed.reviews);
+      if (parsed.stockAlerts && Array.isArray(parsed.stockAlerts)) {
+        setStockAlerts(parsed.stockAlerts);
+        localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(parsed.stockAlerts));
+      }
       if (parsed.siteSettings) setSiteSettings(parsed.siteSettings);
       if (parsed.headerDesign) setHeaderDesign(parsed.headerDesign);
+      if (parsed.weeklyDeal) setWeeklyDeal(parsed.weeklyDeal);
       if (parsed.firebaseConfig) setFirebaseConfig(parsed.firebaseConfig);
       showToast('Резервну копію успішно відновлено!', 'success');
       const conf = parsed.firebaseConfig || firebaseConfig;
@@ -937,8 +990,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           orders: parsed.orders || orders,
           clients: parsed.clients || clients,
           reviews: parsed.reviews || reviews,
+          stockAlerts: parsed.stockAlerts || stockAlerts,
           siteSettings: parsed.siteSettings || siteSettings,
           headerDesign: parsed.headerDesign || headerDesign,
+          weeklyDeal: parsed.weeklyDeal || weeklyDeal,
           lastSyncTimestamp: Date.now()
         }).catch(() => {});
       }
@@ -2107,7 +2162,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
 
     // Push to Firebase RTDB and Firestore
-    if (firebaseConfig.enabled) {
+    if (firebaseConfig.enabled || firebaseConfig.databaseURL) {
       pushStockAlertToFirebase(firebaseConfig, newAlert).catch(() => {});
     }
 
@@ -2140,7 +2195,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(next));
     } catch {}
 
-    if (firebaseConfig.enabled) {
+    if (firebaseConfig.enabled || firebaseConfig.databaseURL) {
       updateStockAlertStatusInFirebase(firebaseConfig, alertId, status).catch(() => {});
     }
     showToast(status === 'notified' ? 'Клієнта позначено як сповіщеного' : 'Статус оновлено', 'info');
@@ -2153,15 +2208,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(next));
     } catch {}
 
-    if (firebaseConfig.enabled) {
+    if (firebaseConfig.enabled || firebaseConfig.databaseURL) {
       deleteStockAlertFromFirebase(firebaseConfig, alertId).catch(() => {});
+      pushStoreToFirebase(firebaseConfig, { stockAlerts: next, lastSyncTimestamp: Date.now() }).catch(() => {});
     }
     showToast('Запит на сповіщення видалено', 'info');
   };
 
   const clearAllStockAlerts = () => {
     stockAlerts.forEach(a => {
-      if (firebaseConfig.enabled) {
+      if (firebaseConfig.enabled || firebaseConfig.databaseURL) {
         deleteStockAlertFromFirebase(firebaseConfig, a.id).catch(() => {});
       }
     });
@@ -2169,6 +2225,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       localStorage.removeItem('iskra_stock_alerts_v1');
     } catch {}
+    if (firebaseConfig.enabled || firebaseConfig.databaseURL) {
+      pushStoreToFirebase(firebaseConfig, { stockAlerts: [], lastSyncTimestamp: Date.now() }).catch(() => {});
+    }
     showToast('Всі запити на сповіщення видалено', 'info');
   };
 
@@ -2176,7 +2235,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const toDelete = stockAlerts.filter(a => a.status === 'notified');
     const remaining = stockAlerts.filter(a => a.status !== 'notified');
     toDelete.forEach(a => {
-      if (firebaseConfig.enabled) {
+      if (firebaseConfig.enabled || firebaseConfig.databaseURL) {
         deleteStockAlertFromFirebase(firebaseConfig, a.id).catch(() => {});
       }
     });
@@ -2184,6 +2243,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       localStorage.setItem('iskra_stock_alerts_v1', JSON.stringify(remaining));
     } catch {}
+    if (firebaseConfig.enabled || firebaseConfig.databaseURL) {
+      pushStoreToFirebase(firebaseConfig, { stockAlerts: remaining, lastSyncTimestamp: Date.now() }).catch(() => {});
+    }
     showToast(`Видалено ${toDelete.length} сповіщених запитів`, 'info');
   };
 

@@ -661,6 +661,10 @@ export const AdminPanel: React.FC = () => {
   const [smsModalAlert, setSmsModalAlert] = useState<{ alert: StockAlertRequest; text: string } | null>(null);
   const [isSendingGatewaySms, setIsSendingGatewaySms] = useState(false);
   const [selectedStockAlertIds, setSelectedStockAlertIds] = useState<string[]>([]);
+  const [alertToDelete, setAlertToDelete] = useState<string | null>(null);
+  const [isConfirmingClearAllAlerts, setIsConfirmingClearAllAlerts] = useState(false);
+  const [isConfirmingClearNotifiedAlerts, setIsConfirmingClearNotifiedAlerts] = useState(false);
+  const [isConfirmingBulkDeleteAlerts, setIsConfirmingBulkDeleteAlerts] = useState(false);
 
   // Search & Filter states
   const [productSearch, setProductSearch] = useState('');
@@ -4571,37 +4575,75 @@ export const AdminPanel: React.FC = () => {
                   )}
 
                   {notifiedCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`Видалити всі ${notifiedCount} сповіщених запитів зі списку?`)) {
-                          clearNotifiedStockAlerts();
-                          setSelectedStockAlertIds([]);
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 transition-colors cursor-pointer shadow-2xs"
-                      title="Видалити всі запити, які вже мають статус 'Сповіщено'"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Очистити сповіщені ({notifiedCount})</span>
-                    </button>
+                    isConfirmingClearNotifiedAlerts ? (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-900 rounded-xl text-xs border border-emerald-300 animate-in fade-in shadow-2xs">
+                        <span className="font-semibold text-[11px]">Очистити {notifiedCount} сповіщених?</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearNotifiedStockAlerts();
+                            setSelectedStockAlertIds([]);
+                            setIsConfirmingClearNotifiedAlerts(false);
+                          }}
+                          className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                        >
+                          Так
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsConfirmingClearNotifiedAlerts(false)}
+                          className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-[11px] rounded-lg cursor-pointer transition-colors"
+                        >
+                          Ні
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsConfirmingClearNotifiedAlerts(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 transition-colors cursor-pointer shadow-2xs"
+                        title="Видалити всі запити, які вже мають статус 'Сповіщено'"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Очистити сповіщені ({notifiedCount})</span>
+                      </button>
+                    )
                   )}
 
                   {stockAlerts.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm('Видалити ВСІ запити на сповіщення про наявність?')) {
-                          clearAllStockAlerts();
-                          setSelectedStockAlertIds([]);
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 transition-colors cursor-pointer shadow-2xs"
-                      title="Видалити всі записи зі списку"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Видалити всі ({stockAlerts.length})</span>
-                    </button>
+                    isConfirmingClearAllAlerts ? (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 text-rose-900 rounded-xl text-xs border border-rose-300 animate-in fade-in shadow-2xs">
+                        <span className="font-bold text-[11px]">Видалити всі {stockAlerts.length}?</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearAllStockAlerts();
+                            setSelectedStockAlertIds([]);
+                            setIsConfirmingClearAllAlerts(false);
+                          }}
+                          className="px-2.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                        >
+                          Так, видалити
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsConfirmingClearAllAlerts(false)}
+                          className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-[11px] rounded-lg cursor-pointer transition-colors"
+                        >
+                          Скасувати
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsConfirmingClearAllAlerts(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 transition-colors cursor-pointer shadow-2xs"
+                        title="Видалити всі записи зі списку"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Видалити всі ({stockAlerts.length})</span>
+                      </button>
+                    )
                   )}
 
                   <button
@@ -4721,19 +4763,38 @@ export const AdminPanel: React.FC = () => {
                   >
                     Позначити сповіщеними
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`Видалити обрані (${selectedStockAlertIds.length}) запити на сповіщення?`)) {
-                        selectedStockAlertIds.forEach(id => deleteStockAlert(id));
-                        setSelectedStockAlertIds([]);
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Видалити обрані ({selectedStockAlertIds.length})</span>
-                  </button>
+                  {isConfirmingBulkDeleteAlerts ? (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-900/90 text-white rounded-xl text-xs border border-rose-500 animate-in fade-in">
+                      <span className="font-semibold text-[11px]">Видалити {selectedStockAlertIds.length} запитів?</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selectedStockAlertIds.forEach(id => deleteStockAlert(id));
+                          setSelectedStockAlertIds([]);
+                          setIsConfirmingBulkDeleteAlerts(false);
+                        }}
+                        className="px-2.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+                      >
+                        Так
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsConfirmingBulkDeleteAlerts(false)}
+                        className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] rounded-lg cursor-pointer transition-colors"
+                      >
+                        Ні
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingBulkDeleteAlerts(true)}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Видалити обрані ({selectedStockAlertIds.length})</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setSelectedStockAlertIds([])}
@@ -5104,19 +5165,38 @@ export const AdminPanel: React.FC = () => {
                                 )}
 
                                 {/* Delete Button */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (window.confirm(`Видалити запит від ${alert.name || alert.phone}?`)) {
-                                      deleteStockAlert(alert.id);
-                                      setSelectedStockAlertIds(prev => prev.filter(id => id !== alert.id));
-                                    }
-                                  }}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer shrink-0 border border-transparent hover:border-rose-200"
-                                  title="Видалити запит"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                </button>
+                                {alertToDelete === alert.id ? (
+                                  <div className="flex items-center gap-1 bg-rose-50 px-1.5 py-1 rounded-xl border border-rose-200 animate-in fade-in shrink-0 shadow-2xs">
+                                    <span className="text-[10px] font-bold text-rose-700">Видалити?</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        deleteStockAlert(alert.id);
+                                        setSelectedStockAlertIds(prev => prev.filter(id => id !== alert.id));
+                                        setAlertToDelete(null);
+                                      }}
+                                      className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer shadow-2xs"
+                                    >
+                                      Так
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setAlertToDelete(null)}
+                                      className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[10px] font-medium transition-colors cursor-pointer"
+                                    >
+                                      Ні
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setAlertToDelete(alert.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer shrink-0 border border-transparent hover:border-rose-200"
+                                    title="Видалити запит"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

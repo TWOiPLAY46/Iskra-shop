@@ -364,6 +364,15 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
       if (storeData.weeklyDeal !== undefined) {
         await set(ref(db, 'store/weeklyDeal'), storeData.weeklyDeal);
       }
+      if (storeData.stockAlerts !== undefined) {
+        const alertsMap: Record<string, any> = {};
+        if (Array.isArray(storeData.stockAlerts)) {
+          storeData.stockAlerts.forEach((a: any) => {
+            if (a && a.id) alertsMap[a.id] = a;
+          });
+        }
+        await set(ref(db, 'store/stockAlerts'), alertsMap);
+      }
       rtdbSuccess = true;
     }
   } catch (err) {
@@ -459,6 +468,19 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(storeData.weeklyDeal)
+        });
+      }
+      if (storeData.stockAlerts !== undefined) {
+        const alertsMap: Record<string, any> = {};
+        if (Array.isArray(storeData.stockAlerts)) {
+          storeData.stockAlerts.forEach((a: any) => {
+            if (a && a.id) alertsMap[a.id] = a;
+          });
+        }
+        await fetch(`${baseUrl}/store/stockAlerts.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(alertsMap)
         });
       }
     } catch {
@@ -607,6 +629,22 @@ export async function pushStoreToFirebase(config: FirebaseConnectionConfig, stor
         }
       }
 
+      // Sync stock alerts to Firestore
+      if (storeData.stockAlerts && Array.isArray(storeData.stockAlerts)) {
+        try {
+          const batch = writeBatch(firestore);
+          storeData.stockAlerts.slice(0, 100).forEach((alert: any) => {
+            if (alert && alert.id) {
+              const aRef = doc(firestore, 'stockAlerts', alert.id);
+              batch.set(aRef, alert, { merge: true });
+            }
+          });
+          await batch.commit();
+        } catch (e) {
+          console.warn("Firestore stock alerts sync warning:", e);
+        }
+      }
+
       firestoreSuccess = true;
     }
   } catch (err) {
@@ -645,6 +683,10 @@ export async function fetchStoreFromFirebase(config: FirebaseConnectionConfig): 
           }
           val.orders = Array.from(ordersMap.values());
           val.ordersList = Object.fromEntries(ordersMap.entries());
+          if (val.stockAlerts) {
+            const arr = Array.isArray(val.stockAlerts) ? val.stockAlerts : Object.values(val.stockAlerts);
+            val.stockAlerts = arr.filter((a: any) => a && a.id);
+          }
           return val;
         }
       }
@@ -675,6 +717,10 @@ export async function fetchStoreFromFirebase(config: FirebaseConnectionConfig): 
           }
           json.orders = Array.from(ordersMap.values());
           json.ordersList = Object.fromEntries(ordersMap.entries());
+          if (json.stockAlerts) {
+            const arr = Array.isArray(json.stockAlerts) ? json.stockAlerts : Object.values(json.stockAlerts);
+            json.stockAlerts = arr.filter((a: any) => a && a.id);
+          }
           return json;
         }
       }
@@ -794,6 +840,19 @@ export async function fetchStoreFromFirebase(config: FirebaseConnectionConfig): 
           if (!reviewsSnap.empty) {
             result.reviews = reviewsSnap.docs.map(d => d.data());
           }
+        }
+      } catch {
+        // Quietly catch
+      }
+
+      // Fetch stock alerts from Firestore
+      try {
+        const alertsSnap = await getDocs(collection(firestore, 'stockAlerts'));
+        if (!alertsSnap.empty) {
+          result.stockAlerts = alertsSnap.docs.map(d => {
+            const data = d.data();
+            return { id: d.id, ...data };
+          });
         }
       } catch {
         // Quietly catch
@@ -1032,6 +1091,10 @@ export function subscribeToStore(
           }
           val.orders = Array.from(ordersMap.values());
           val.ordersList = Object.fromEntries(ordersMap.entries());
+          if (val.stockAlerts) {
+            const arr = Array.isArray(val.stockAlerts) ? val.stockAlerts : Object.values(val.stockAlerts);
+            val.stockAlerts = arr.filter((a: any) => a && a.id);
+          }
           onData(val);
         }
       }
@@ -1257,6 +1320,8 @@ export async function pushStockAlertToFirebase(
     productPrice?: number;
     phone: string; 
     name?: string; 
+    channel?: string;
+    telegramUsername?: string;
     createdAt: string; 
     status: string; 
     notifiedAt?: string 
@@ -1275,7 +1340,7 @@ export async function pushStockAlertToFirebase(
   }
 
   // REST fallback
-  if (!ok && config.databaseURL && alertData.id) {
+  if (config.databaseURL && alertData.id) {
     try {
       const res = await fetch(`${config.databaseURL.replace(/\/+$/, '')}/store/stockAlerts/${alertData.id}.json`, {
         method: 'PUT',
@@ -1301,31 +1366,59 @@ export async function pushStockAlertToFirebase(
 }
 
 /**
- * Fetch Stock Alert Requests from Firebase
+ * Fetch Stock Alert Requests from Firebase (RTDB, REST, and Firestore)
  */
 export async function fetchStockAlertsFromFirebase(
   config: FirebaseConnectionConfig
 ): Promise<any[] | null> {
+  const alertsMap = new Map<string, any>();
+
+  // 1. RTDB SDK
   try {
     const db = getOrInitFirebase(config);
     if (db) {
       const snap = await get(ref(db, 'store/stockAlerts'));
       if (snap.exists() && snap.val()) {
         const val = snap.val();
-        return Object.values(val);
+        const list = Array.isArray(val) ? val : Object.values(val);
+        list.forEach((a: any) => { if (a && a.id) alertsMap.set(a.id, a); });
       }
     }
   } catch {}
 
-  // REST fallback
+  // 2. REST fallback
   if (config.databaseURL) {
     try {
       const res = await fetch(`${config.databaseURL.replace(/\/+$/, '')}/store/stockAlerts.json`);
       if (res.ok) {
         const data = await res.json();
-        if (data) return Object.values(data);
+        if (data) {
+          const list = Array.isArray(data) ? data : Object.values(data);
+          list.forEach((a: any) => { if (a && a.id && !alertsMap.has(a.id)) alertsMap.set(a.id, a); });
+        }
       }
     } catch {}
+  }
+
+  // 3. Firestore fallback
+  try {
+    const firestore = getOrInitFirestore(config);
+    if (firestore) {
+      const snap = await getDocs(collection(firestore, 'stockAlerts'));
+      if (!snap.empty) {
+        snap.docs.forEach(d => {
+          const a = d.data();
+          if (a && (a.id || d.id)) {
+            const id = a.id || d.id;
+            if (!alertsMap.has(id)) alertsMap.set(id, { ...a, id });
+          }
+        });
+      }
+    }
+  } catch {}
+
+  if (alertsMap.size > 0) {
+    return Array.from(alertsMap.values());
   }
 
   return null;
@@ -1339,7 +1432,7 @@ export async function updateStockAlertStatusInFirebase(
   id: string,
   status: string
 ): Promise<boolean> {
-  const patch = {
+  const patch: any = {
     status,
     notifiedAt: status === 'notified' ? new Date().toISOString() : null
   };
@@ -1350,6 +1443,16 @@ export async function updateStockAlertStatusInFirebase(
       await update(ref(db, `store/stockAlerts/${id}`), patch);
     }
   } catch {}
+
+  if (config.databaseURL && id) {
+    try {
+      await fetch(`${config.databaseURL.replace(/\/+$/, '')}/store/stockAlerts/${id}.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch)
+      });
+    } catch {}
+  }
 
   try {
     const firestore = getOrInitFirestore(config);
@@ -1374,6 +1477,14 @@ export async function deleteStockAlertFromFirebase(
       await remove(ref(db, `store/stockAlerts/${id}`));
     }
   } catch {}
+
+  if (config.databaseURL && id) {
+    try {
+      await fetch(`${config.databaseURL.replace(/\/+$/, '')}/store/stockAlerts/${id}.json`, {
+        method: 'DELETE'
+      });
+    } catch {}
+  }
 
   try {
     const firestore = getOrInitFirestore(config);
